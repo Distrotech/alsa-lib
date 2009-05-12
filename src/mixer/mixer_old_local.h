@@ -1,6 +1,7 @@
 /*
- *  Mixer Simple Interface - local header file
- *  Copyright (c) 2005 by Jaroslav Kysela <perex@perex.cz>
+ *  Mixer Interface - local header file
+ *  Copyright (c) 2000 by Jaroslav Kysela <perex@perex.cz>
+ *  Copyright (c) 2001 by Abramo Bagnara <abramo@alsa-project.org>
  *
  *
  *   This library is free software; you can redistribute it and/or modify
@@ -19,13 +20,11 @@
  *
  */
 
-#include "mixer_abst.h"
+#include "local.h"
+#include "mixer_old.h"
 
-/* make local functions really local */
-#define snd_mixer_simple_none_register \
-	snd1_mixer_simple_none_register
-#define snd_mixer_simple_basic_register \
-	snd1_mixer_simple_basic_register
-
-int snd_mixer_simple_none_register(snd_mixer_t *mixer, struct snd_mixer_selem_regopt *options, snd_mixer_class_t **classp);
-int snd_mixer_simple_basic_register(snd_mixer_t *mixer, struct snd_mixer_selem_regopt *options, snd_mixer_class_t **classp);
+struct _snd_mixer {
+        snd_amixer_t *amixer;
+        snd_mixer_callback_t callback;
+        void *callback_private;
+};

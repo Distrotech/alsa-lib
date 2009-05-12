@@ -9,7 +9,7 @@ SUBDIRS += aserver
 endif
 if BUILD_MIXER
 if BUILD_ALISP
-SUBDIRS += alsalisp
+#SUBDIRS += alsalisp
 endif
 endif
 SUBDIRS += test utils

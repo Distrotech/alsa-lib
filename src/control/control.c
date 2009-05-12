@@ -88,6 +88,8 @@ snd_ctl_type_t snd_ctl_type(snd_ctl_t *ctl)
 int snd_ctl_close(snd_ctl_t *ctl)
 {
 	int err;
+
+	snd_ctl_cache_free(ctl);
 	while (!list_empty(&ctl->async_handlers)) {
 		snd_async_handler_t *h = list_entry(&ctl->async_handlers.next, snd_async_handler_t, hlist);
 		snd_async_del_handler(h);
@@ -118,16 +120,18 @@ int snd_ctl_nonblock(snd_ctl_t *ctl, int nonblock)
 }
 
 #ifndef DOC_HIDDEN
-int snd_ctl_new(snd_ctl_t **ctlp, snd_ctl_type_t type, const char *name)
+int snd_ctl_new(snd_ctl_t **ctlp, snd_ctl_type_t type, const char *name, int mode)
 {
 	snd_ctl_t *ctl;
 	ctl = calloc(1, sizeof(*ctl));
 	if (!ctl)
 		return -ENOMEM;
 	ctl->type = type;
+	ctl->mode = mode;
 	if (name)
 		ctl->name = strdup(name);
 	INIT_LIST_HEAD(&ctl->async_handlers);
+	INIT_LIST_HEAD(&ctl->elems);
 	*ctlp = ctl;
 	return 0;
 }
@@ -218,7 +222,14 @@ int snd_ctl_poll_descriptors_revents(snd_ctl_t *ctl, struct pollfd *pfds, unsign
  */
 int snd_ctl_subscribe_events(snd_ctl_t *ctl, int subscribe)
 {
+	int err;
+
 	assert(ctl);
+	if (ctl->mode & SND_CTL_CACHE) {
+		err = snd_ctl_cache_load(ctl);
+		if (err < 0)
+			return err;
+	}
 	return ctl->ops->subscribe_events(ctl, subscribe);
 }
 

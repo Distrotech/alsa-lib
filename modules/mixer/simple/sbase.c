@@ -34,7 +34,7 @@
  * Prototypes
  */
 
-static int selem_read(snd_mixer_elem_t *elem);
+static int selem_read(snd_amixer_elem_t *elem);
 
 /*
  * Helpers
@@ -313,11 +313,11 @@ static void selem_free(snd_mixer_elem_t *elem)
 	free(simple);
 }
 
-static int simple_event_add1(snd_mixer_class_t *class,
+static int simple_event_add1(snd_amixer_t *amixer,
 			     snd_hctl_elem_t *helem,
 			     struct helem_selector *sel)
 {
-	struct bclass_private *priv = snd_mixer_sbasic_get_private(class);
+	struct bmixer_private *priv = snd_amixer_sbasic_get_private(class);
 	snd_mixer_elem_t *melem;
 	snd_mixer_selem_id_t *id;
 	snd_ctl_elem_info_t *info;
@@ -328,12 +328,12 @@ static int simple_event_add1(snd_mixer_class_t *class,
 	long min, max;
 	int err, new = 0;
 	struct list_head *pos;
-	struct bclass_sid *bsid;
+	struct bmixer_sid *bsid;
 	struct melem_sids *sid;
 	unsigned int ui;
 	
 	list_for_each(pos, &priv->sids) {
-		bsid = list_entry(pos, struct bclass_sid, list);
+		bsid = list_entry(pos, struct bmixer_sid, list);
 		for (ui = 0; ui < bsid->count; ui++) {
 			if (bsid->sids[ui].sid == sel->sid) {
 				sid = &bsid->sids[ui];
@@ -391,7 +391,7 @@ static int simple_event_add1(snd_mixer_class_t *class,
 	hsimple->max = max;
 	snd_mixer_selem_id_set_name(id, sid->sname);
 	snd_mixer_selem_id_set_index(id, sid->sindex);
-	melem = snd_mixer_find_selem(snd_mixer_class_get_mixer(class), id);
+	melem = snd_mixer_find_selem(amixer, id);
 	if (!melem) {
 		simple = calloc(1, sizeof(*simple));
 		if (!simple) {
@@ -435,7 +435,7 @@ static int simple_event_add1(snd_mixer_class_t *class,
 	}
 #endif
 	if (new)
-		err = snd_mixer_elem_add(melem, class);
+		err = snd_mixer_elem_add(melem, amixer);
 	else
 		err = snd_mixer_elem_info(melem);
 	if (err < 0)
@@ -452,10 +452,10 @@ static int simple_event_add1(snd_mixer_class_t *class,
       	return -EINVAL;
 }
 
-static int simple_event_add(snd_mixer_class_t *class, snd_hctl_elem_t *helem)
+static int simple_event_add(snd__amixer_t *amixer, snd_hctl_elem_t *helem)
 {
-	struct bclass_private *priv = snd_mixer_sbasic_get_private(class);
-	struct bclass_selector *sel;
+	struct bmixer_private *priv = snd_mixer_sbasic_get_private(amixer);
+	struct bmixer_selector *sel;
 	struct helem_selector *hsel;
 	struct list_head *pos;
 	snd_ctl_elem_iface_t iface = snd_hctl_elem_get_interface(helem);
@@ -465,11 +465,11 @@ static int simple_event_add(snd_mixer_class_t *class, snd_hctl_elem_t *helem)
 	int err;
 
 	list_for_each(pos, &priv->selectors) {
-		sel = list_entry(pos, struct bclass_selector, list);
+		sel = list_entry(pos, struct bmixer_selector, list);
 		for (ui = 0; ui < sel->count; ui++) {
 			hsel = &sel->selectors[ui];
 			if (hsel->iface == iface && !strcmp(hsel->name, name) && hsel->index == index) {
-				err = simple_event_add1(class, helem, hsel);
+				err = simple_event_add1(amixer, helem, hsel);
 				if (err < 0)
 					return err;	/* early exit? */
 			}
@@ -478,14 +478,14 @@ static int simple_event_add(snd_mixer_class_t *class, snd_hctl_elem_t *helem)
 	return 0;
 }
 
-int alsa_mixer_sbasic_event(snd_mixer_class_t *class, unsigned int mask,
+int alsa_mixer_sbasic_event(snd_amixer_t *amixer, unsigned int mask,
 			    snd_hctl_elem_t *helem, snd_mixer_elem_t *melem)
 {
 	int err;
 	if (mask == SND_CTL_EVENT_MASK_REMOVE)
 		return simple_event_remove(helem, melem);
 	if (mask & SND_CTL_EVENT_MASK_ADD) {
-		err = simple_event_add(class, helem);
+		err = simple_event_add(amixer, helem);
 		if (err < 0)
 			return err;
 	}
@@ -493,7 +493,7 @@ int alsa_mixer_sbasic_event(snd_mixer_class_t *class, unsigned int mask,
 		err = simple_event_remove(helem, melem);
 		if (err < 0)
 			return err;
-		err = simple_event_add(class, helem);
+		err = simple_event_add(amixer, helem);
 		if (err < 0)
 			return err;
 		return 0;
@@ -511,39 +511,39 @@ int alsa_mixer_sbasic_event(snd_mixer_class_t *class, unsigned int mask,
 	return 0;
 }
 
-static void sbasic_cpriv_free(snd_mixer_class_t *class)
+static void sbasic_cpriv_free(snd_amixer_t *amixer)
 {
-	struct bclass_private *priv = snd_mixer_sbasic_get_private(class);
-	struct bclass_selector *sel;
-	struct bclass_sid *sid;
+	struct bmixer_private *priv = snd_amixer_sbasic_get_private(amixer);
+	struct bmixer_selector *sel;
+	struct bmixer_sid *sid;
 	struct list_head *pos, *pos1;
 
 	list_for_each_safe(pos, pos1, &priv->selectors) {
-		sel = list_entry(pos, struct bclass_selector, list);
+		sel = list_entry(pos, struct bmixer_selector, list);
 		free(sel);
 	}
 	list_for_each_safe(pos, pos1, &priv->sids) {
-		sid = list_entry(pos, struct bclass_sid, list);
+		sid = list_entry(pos, struct bmixer_sid, list);
 		free(sid);
 	}
 	free(priv);
 }
 
-void alsa_mixer_sbasic_initpriv(snd_mixer_class_t *class,
-				struct bclass_private *priv)
+void alsa_mixer_sbasic_initpriv(snd_amixer_t *amixer,
+				struct bmixer_private *priv)
 {
 	INIT_LIST_HEAD(&priv->selectors);
 	INIT_LIST_HEAD(&priv->sids);
-	snd_mixer_sbasic_set_private(class, priv);
-	snd_mixer_sbasic_set_private_free(class, sbasic_cpriv_free);
+	snd_mixer_sbasic_set_private(amixer, priv);
+	snd_mixer_sbasic_set_private_free(amixer, sbasic_cpriv_free);
 }
 
-int alsa_mixer_sbasic_selreg(snd_mixer_class_t *class,
+int alsa_mixer_sbasic_selreg(snd_amixer_t *amixer,
 			     struct helem_selector *selectors,
 			     unsigned int count)
 {
-	struct bclass_private *priv = snd_mixer_sbasic_get_private(class);
-	struct bclass_selector *sel = calloc(1, sizeof(*sel));
+	struct bmixer_private *priv = snd_mixer_sbasic_get_private(amixer);
+	struct bmixer_selector *sel = calloc(1, sizeof(*sel));
 
 	if (sel == NULL)
 		return -ENOMEM;
@@ -560,12 +560,12 @@ int alsa_mixer_sbasic_selreg(snd_mixer_class_t *class,
 	return 0;
 }
 
-int alsa_mixer_sbasic_sidreg(snd_mixer_class_t *class,
+int alsa_mixer_sbasic_sidreg(snd_amixer_t *amixer,
 			     struct melem_sids *sids,
 			     unsigned int count)
 {
-	struct bclass_private *priv = snd_mixer_sbasic_get_private(class);
-	struct bclass_sid *sid = calloc(1, sizeof(*sid));
+	struct bmixer_private *priv = snd_mixer_sbasic_get_private(amixer);
+	struct bmixer_sid *sid = calloc(1, sizeof(*sid));
 
 	if (sid == NULL)
 		return -ENOMEM;
@@ -577,8 +577,8 @@ int alsa_mixer_sbasic_sidreg(snd_mixer_class_t *class,
 		}
 		INIT_LIST_HEAD(&priv->selectors);
 		INIT_LIST_HEAD(&priv->sids);
-		snd_mixer_sbasic_set_private(class, priv);
-		snd_mixer_sbasic_set_private_free(class, sbasic_cpriv_free);
+		snd_mixer_sbasic_set_private(amixer, priv);
+		snd_mixer_sbasic_set_private_free(amixer, sbasic_cpriv_free);
 	}
 	sid->sids = sids;
 	sid->count = count;

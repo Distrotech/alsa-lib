@@ -4,7 +4,7 @@
  * \author Jaroslav Kysela <perex@perex.cz>
  * \author Abramo Bagnara <abramo@alsa-project.org>
  * \author Takashi Iwai <tiwai@suse.de>
- * \date 1998-2001
+ * \date 1998-2008
  *
  * Application interface library for the ALSA driver
  */
@@ -199,14 +199,13 @@ typedef enum _snd_ctl_type {
 /** Read only (flag for open mode) \hideinitializer */
 #define SND_CTL_READONLY		0x0004
 
+/** Cache (extended) mode (flag for open mode) \hideinitializer */
+#define SND_CTL_CACHE			0x0008
+
 /** CTL handle */
 typedef struct _snd_ctl snd_ctl_t;
-
-/** Don't destroy the ctl handle when close */
-#define SND_SCTL_NOFREE			0x0001
-
-/** SCTL type */
-typedef struct _snd_sctl snd_sctl_t;
+/** CTL element handle */
+typedef struct _snd_ctl_elem snd_ctl_elem_t;
 
 int snd_card_load(int card);
 int snd_card_next(int *card);
@@ -466,89 +465,72 @@ int snd_ctl_convert_from_dB(snd_ctl_t *ctl, const snd_ctl_elem_id_t *id,
 /**
  *  \defgroup HControl High level Control Interface
  *  \ingroup Control
- *  The high level control interface.
+ *  The high level control interface. The #SND_CTL_CACHE flag must be
+ *  set to enable this interface.
  *  See \ref hcontrol page for more details.
  *  \{
  */
 
-/** HCTL element handle */
-typedef struct _snd_hctl_elem snd_hctl_elem_t;
-
-/** HCTL handle */
-typedef struct _snd_hctl snd_hctl_t;
-
 /**
- * \brief Compare function for sorting HCTL elements
+ * \brief Compare function for sorting CTL elements
  * \param e1 First element
  * \param e2 Second element
  * \return -1 if e1 < e2, 0 if e1 == e2, 1 if e1 > e2
  */
-typedef int (*snd_hctl_compare_t)(const snd_hctl_elem_t *e1,
-				  const snd_hctl_elem_t *e2);
-int snd_hctl_compare_fast(const snd_hctl_elem_t *c1,
-			  const snd_hctl_elem_t *c2);
+typedef int (*snd_ctl_compare_t)(const snd_ctl_elem_t *e1,
+				 const snd_ctl_elem_t *e2);
+int snd_ctl_compare_fast(const snd_ctl_elem_t *c1,
+			 const snd_ctl_elem_t *c2);
 /** 
- * \brief HCTL callback function
- * \param hctl HCTL handle
+ * \brief CTL callback function
+ * \param ctl CTL handle
  * \param mask event mask
- * \param elem related HCTL element (if any)
+ * \param elem related CTL element (if any)
  * \return 0 on success otherwise a negative error code
  */
-typedef int (*snd_hctl_callback_t)(snd_hctl_t *hctl,
-				   unsigned int mask,
-				   snd_hctl_elem_t *elem);
+typedef int (*snd_ctl_callback_t)(snd_ctl_t *ctl,
+				  unsigned int mask,
+				  snd_ctl_elem_t *elem);
 /** 
- * \brief HCTL element callback function
- * \param elem HCTL element
+ * \brief CTL element callback function
+ * \param elem CTL element
  * \param mask event mask
  * \return 0 on success otherwise a negative error code
  */
-typedef int (*snd_hctl_elem_callback_t)(snd_hctl_elem_t *elem,
-					unsigned int mask);
+typedef int (*snd_ctl_elem_callback_t)(snd_ctl_elem_t *elem,
+				       unsigned int mask);
 
-int snd_hctl_open(snd_hctl_t **hctl, const char *name, int mode);
-int snd_hctl_open_ctl(snd_hctl_t **hctlp, snd_ctl_t *ctl);
-int snd_hctl_close(snd_hctl_t *hctl);
-int snd_hctl_nonblock(snd_hctl_t *hctl, int nonblock);
-int snd_hctl_poll_descriptors_count(snd_hctl_t *hctl);
-int snd_hctl_poll_descriptors(snd_hctl_t *hctl, struct pollfd *pfds, unsigned int space);
-int snd_hctl_poll_descriptors_revents(snd_hctl_t *ctl, struct pollfd *pfds, unsigned int nfds, unsigned short *revents);
-unsigned int snd_hctl_get_count(snd_hctl_t *hctl);
-int snd_hctl_set_compare(snd_hctl_t *hctl, snd_hctl_compare_t hsort);
-snd_hctl_elem_t *snd_hctl_first_elem(snd_hctl_t *hctl);
-snd_hctl_elem_t *snd_hctl_last_elem(snd_hctl_t *hctl);
-snd_hctl_elem_t *snd_hctl_find_elem(snd_hctl_t *hctl, const snd_ctl_elem_id_t *id);
-void snd_hctl_set_callback(snd_hctl_t *hctl, snd_hctl_callback_t callback);
-void snd_hctl_set_callback_private(snd_hctl_t *hctl, void *data);
-void *snd_hctl_get_callback_private(snd_hctl_t *hctl);
-int snd_hctl_load(snd_hctl_t *hctl);
-int snd_hctl_free(snd_hctl_t *hctl);
-int snd_hctl_handle_events(snd_hctl_t *hctl);
-const char *snd_hctl_name(snd_hctl_t *hctl);
-int snd_hctl_wait(snd_hctl_t *hctl, int timeout);
-snd_ctl_t *snd_hctl_ctl(snd_hctl_t *hctl);
+unsigned int snd_ctl_get_count(snd_ctl_t *ctl);
+int snd_ctl_set_compare(snd_ctl_t *ctl, snd_ctl_compare_t hsort);
+snd_ctl_elem_t *snd_ctl_first_elem(snd_ctl_t *ctl);
+snd_ctl_elem_t *snd_ctl_last_elem(snd_ctl_t *ctl);
+snd_ctl_elem_t *snd_ctl_find_elem(snd_ctl_t *ctl, const snd_ctl_elem_id_t *id);
+void snd_ctl_set_callback(snd_ctl_t *ctl, snd_ctl_callback_t callback);
+void snd_ctl_set_callback_private(snd_ctl_t *ctl, void *data);
+void *snd_ctl_get_callback_private(snd_ctl_t *ctl);
+int snd_ctl_handle_events(snd_ctl_t *ctl);
 
-snd_hctl_elem_t *snd_hctl_elem_next(snd_hctl_elem_t *elem);
-snd_hctl_elem_t *snd_hctl_elem_prev(snd_hctl_elem_t *elem);
-int snd_hctl_elem_info(snd_hctl_elem_t *elem, snd_ctl_elem_info_t * info);
-int snd_hctl_elem_read(snd_hctl_elem_t *elem, snd_ctl_elem_value_t * value);
-int snd_hctl_elem_write(snd_hctl_elem_t *elem, snd_ctl_elem_value_t * value);
-int snd_hctl_elem_tlv_read(snd_hctl_elem_t *elem, unsigned int *tlv, unsigned int tlv_size);
-int snd_hctl_elem_tlv_write(snd_hctl_elem_t *elem, const unsigned int *tlv);
-int snd_hctl_elem_tlv_command(snd_hctl_elem_t *elem, const unsigned int *tlv);
+snd_ctl_elem_t *snd_ctl_elem_next(snd_ctl_elem_t *elem);
+snd_ctl_elem_t *snd_ctl_elem_prev(snd_ctl_elem_t *elem);
+int snd_ctl_celem_info(snd_ctl_elem_t *elem, snd_ctl_elem_info_t * info);
+int snd_ctl_celem_read(snd_ctl_elem_t *elem, snd_ctl_elem_value_t * value);
+int snd_ctl_celem_write(snd_ctl_elem_t *elem, snd_ctl_elem_value_t * value);
+int snd_ctl_celem_tlv_read(snd_ctl_elem_t *elem, unsigned int *tlv, unsigned int tlv_size);
+int snd_ctl_celem_tlv_write(snd_ctl_elem_t *elem, const unsigned int *tlv);
+int snd_ctl_celem_tlv_command(snd_ctl_elem_t *elem, const unsigned int *tlv);
 
-snd_hctl_t *snd_hctl_elem_get_hctl(snd_hctl_elem_t *elem);
+snd_ctl_t *snd_ctl_elem_get_ctl(snd_ctl_elem_t *elem);
 
-void snd_hctl_elem_get_id(const snd_hctl_elem_t *obj, snd_ctl_elem_id_t *ptr);
-unsigned int snd_hctl_elem_get_numid(const snd_hctl_elem_t *obj);
-snd_ctl_elem_iface_t snd_hctl_elem_get_interface(const snd_hctl_elem_t *obj);
-unsigned int snd_hctl_elem_get_device(const snd_hctl_elem_t *obj);
-unsigned int snd_hctl_elem_get_subdevice(const snd_hctl_elem_t *obj);
-const char *snd_hctl_elem_get_name(const snd_hctl_elem_t *obj);
-unsigned int snd_hctl_elem_get_index(const snd_hctl_elem_t *obj);
-void snd_hctl_elem_set_callback(snd_hctl_elem_t *obj, snd_hctl_elem_callback_t val);
-void * snd_hctl_elem_get_callback_private(const snd_hctl_elem_t *obj);
-void snd_hctl_elem_set_callback_private(snd_hctl_elem_t *obj, void * val);
+void snd_ctl_elem_get_id(const snd_ctl_elem_t *obj, snd_ctl_elem_id_t *ptr);
+unsigned int snd_ctl_elem_get_numid(const snd_ctl_elem_t *obj);
+snd_ctl_elem_iface_t snd_ctl_elem_get_interface(const snd_ctl_elem_t *obj);
+unsigned int snd_ctl_elem_get_device(const snd_ctl_elem_t *obj);
+unsigned int snd_ctl_elem_get_subdevice(const snd_ctl_elem_t *obj);
+const char *snd_ctl_elem_get_name(const snd_ctl_elem_t *obj);
+unsigned int snd_ctl_elem_get_index(const snd_ctl_elem_t *obj);
+void snd_ctl_elem_set_callback(snd_ctl_elem_t *obj, snd_ctl_elem_callback_t val);
+void * snd_ctl_elem_get_callback_private(const snd_ctl_elem_t *obj);
+void snd_ctl_elem_set_callback_private(snd_ctl_elem_t *obj, void * val);
 
 /** \} */
 
@@ -560,6 +542,12 @@ void snd_hctl_elem_set_callback_private(snd_hctl_elem_t *obj, void * val);
  *  The setup control interface - set or modify control elements from a configuration file.
  *  \{
  */
+
+/** Don't destroy the ctl handle when close */
+#define SND_SCTL_NOFREE			0x0001
+
+/** SCTL type */
+typedef struct _snd_sctl snd_sctl_t;
 
 int snd_sctl_build(snd_sctl_t **ctl, snd_ctl_t *handle, snd_config_t *config,
 		   snd_config_t *private_data, int mode);

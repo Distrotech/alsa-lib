@@ -1,6 +1,6 @@
 /*
  *  Mixer Interface - simple abstact module - base library (dlopen function)
- *  Copyright (c) 2005 by Jaroslav Kysela <perex@perex.cz>
+ *  Copyright (c) 2005-2008 by Jaroslav Kysela <perex@perex.cz>
  *
  *
  *   This library is free software; you can redistribute it and/or modify

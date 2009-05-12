@@ -55,7 +55,7 @@ struct helem_selector {
 
 struct helem_base {
 	struct list_head list;
-	snd_hctl_elem_t *helem;
+	snd_ctl_elem_t *helem;
 	unsigned short purpose;
 	unsigned int caps;
 	unsigned int inactive: 1;
@@ -64,7 +64,6 @@ struct helem_base {
 };
 
 struct selem_base {
-	sm_selem_t selem;
 	struct list_head helems;
 	unsigned short sid;
 	struct {
@@ -75,37 +74,37 @@ struct selem_base {
 	} dir[2];
 };
 
-struct bclass_selector {
+struct bmixer_selector {
 	struct list_head list;
 	struct helem_selector *selectors;
 	unsigned int count;
 };
 
-struct bclass_sid {
+struct bmixer_sid {
 	struct list_head list;
 	struct melem_sids *sids;
 	unsigned int count;
 };
 
-typedef struct bclass_base_ops {
-	int (*event)(snd_mixer_class_t *class, unsigned int mask,
-		     snd_hctl_elem_t *helem, snd_mixer_elem_t *melem);
-	int (*selreg)(snd_mixer_class_t *class,
+typedef struct bmixer_base_ops {
+	int (*event)(snd_amixer_t *amixer, unsigned int mask,
+		     snd_ctl_elem_t *helem, snd_amixer_elem_t *melem);
+	int (*selreg)(snd_amixer_t *amixer,
 		      struct helem_selector *selectors,
 		      unsigned int count);
-	int (*sidreg)(snd_mixer_class_t *class,
+	int (*sidreg)(snd_amixer_t *amixer,
 		      struct melem_sids *sids,
 		      unsigned int count);
-} bclass_base_ops_t;
+} bmixer_base_ops_t;
 
-struct bclass_private {
+struct bmixer_private {
 	struct list_head selectors;
 	struct list_head sids;
 	void *dl_sbase;
-	bclass_base_ops_t ops;
+	bmixer_base_ops_t ops;
 };
 
-int mixer_simple_basic_dlopen(snd_mixer_class_t *class,
-			      bclass_base_ops_t **ops);
+int mixer_simple_basic_dlopen(snd_amixer_t *amixer,
+			      bmixer_base_ops_t **ops);
 
 #endif /* __SMIXER_BASE_H */

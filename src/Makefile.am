@@ -39,8 +39,8 @@ SUBDIRS += seq
 libasound_la_LIBADD += seq/libseq.la
 endif
 if BUILD_ALISP
-SUBDIRS += alisp
-libasound_la_LIBADD += alisp/libalisp.la
+#SUBDIRS += alisp
+#libasound_la_LIBADD += alisp/libalisp.la
 endif
 SUBDIRS += compat conf
 libasound_la_LIBADD += compat/libcompat.la @ALSA_DEPLIBS@

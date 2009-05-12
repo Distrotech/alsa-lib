@@ -21,6 +21,7 @@
  */
 
 #include "local.h"
+#include "mixer_abst.h"
 
 typedef struct _bag1 {
 	void *ptr;
@@ -42,41 +43,40 @@ typedef struct list_head *bag_iterator_t;
 #define bag_for_each(pos, bag) list_for_each(pos, bag)
 #define bag_for_each_safe(pos, next, bag) list_for_each_safe(pos, next, bag)
 
-struct _snd_mixer_class {
-	struct list_head list;
-	snd_mixer_t *mixer;
-	snd_mixer_event_t event;
-	void *private_data;		
-	void (*private_free)(snd_mixer_class_t *class);
-	snd_mixer_compare_t compare;
-};
-
-struct _snd_mixer_elem {
-	snd_mixer_elem_type_t type;
+struct _snd_amixer_elem {
 	struct list_head list;		/* links for list of all elems */
-	snd_mixer_class_t *class;
+	snd_amixer_t *amixer;
+	snd_ctl_t *ctl;
 	void *private_data;
-	void (*private_free)(snd_mixer_elem_t *elem);
-	snd_mixer_elem_callback_t callback;
+	void (*private_free)(snd_amixer_elem_t *elem);
+	snd_amixer_elem_callback_t callback;
 	void *callback_private;
 	bag_t helems;
 	int compare_weight;		/* compare weight (reversed) */
+	sm_elem_t sm;
 };
 
-struct _snd_mixer {
-	struct list_head slaves;	/* list of all slaves */
-	struct list_head classes;	/* list of all elem classes */
-	struct list_head elems;		/* list of all elems */
-	snd_mixer_elem_t **pelems;	/* array of all elems */
+struct _snd_amixer {
+	struct sm_open sm_open;
+	struct list_head elems;		  /* list of all elems */
+	snd_amixer_elem_t **pelems;	  /* array of all elems */
 	unsigned int count;
 	unsigned int alloc;
 	unsigned int events;
-	snd_mixer_callback_t callback;
+	snd_amixer_callback_t callback;
 	void *callback_private;
-	snd_mixer_compare_t compare;
+	snd_amixer_compare_t compare;
+	snd_amixer_event_t event;
+	void *dl_handle;
 };
 
-struct _snd_mixer_selem_id {
-	char name[60];
-	unsigned int index;
-};
+/* make local functions really local */
+#define snd_amixer_simple_none_open \
+	snd1_amixer_simple_none_open
+#define snd_amixer_simple_basic_open \
+	snd1_amixer_simple_basic_open
+
+int snd_amixer_simple_none_open(snd_amixer_t *amixer,
+				struct sm_open *sm_open);
+int snd_amixer_simple_basic_open(snd_amixer_t *amixer,
+				 struct sm_open *sm_open);

@@ -535,7 +535,7 @@ int snd_ctl_shm_open(snd_ctl_t **handlep, const char *name, const char *sockname
 	shm->socket = sock;
 	shm->ctrl = ctrl;
 
-	err = snd_ctl_new(&ctl, SND_CTL_TYPE_SHM, name);
+	err = snd_ctl_new(&ctl, SND_CTL_TYPE_SHM, name, mode);
 	if (err < 0) {
 		result = err;
 		goto _err;
@@ -548,6 +548,13 @@ int snd_ctl_shm_open(snd_ctl_t **handlep, const char *name, const char *sockname
 		return err;
 	}
 	ctl->poll_fd = err;
+	if (mode & SND_CTL_CACHE) {
+		err = snd_ctl_cache_load(ctl);
+		if (err < 0) {
+			snd_ctl_close(ctl);
+			return err;
+		}
+	}
 	*handlep = ctl;
 	return 0;
 

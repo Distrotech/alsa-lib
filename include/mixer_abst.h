@@ -2,7 +2,7 @@
  * \file include/mixer_abst.h
  * \brief Mixer abstract implementation interface library for the ALSA library
  * \author Jaroslav Kysela <perex@perex.cz>
- * \date 2005
+ * \date 2005-2008
  *
  * Mixer abstact implementation interface library for the ALSA library
  */
@@ -36,8 +36,11 @@ extern "C" {
  *  \{
  */
 
-#define	SM_PLAY			0
-#define SM_CAPT			1
+#define SM_CTL_COUNT		8
+
+#define	SM_PLAY			SND_MIXER_DIR_PLAYBACK
+#define SM_CAPT			SND_MIXER_DIR_CAPTURE
+#define SM_COMM			SND_MIXER_DIR_COMMON
 
 #define SM_CAP_GVOLUME		(1<<1)
 #define SM_CAP_GSWITCH		(1<<2)
@@ -55,52 +58,45 @@ extern "C" {
 /* SM_CAP_* 24-31 => private for module use */
 
 #define SM_OPS_IS_ACTIVE	0
-#define SM_OPS_IS_MONO		1
-#define SM_OPS_IS_CHANNEL	2
-#define SM_OPS_IS_ENUMERATED	3
-#define SM_OPS_IS_ENUMCNT	4
+#define SM_OPS_IS_CHANNEL	1
+#define SM_OPS_IS_ENUMERATED	2
+#define SM_OPS_IS_ENUMCNT	3
 
-#define sm_selem(x)		((sm_selem_t *)((x)->private_data))
-#define sm_selem_ops(x)		((sm_selem_t *)((x)->private_data))->ops
-
-typedef struct _sm_selem {
-	snd_mixer_selem_id_t *id;
+typedef struct _sm_elem {
+	snd_amixer_elem_id_t id;
 	struct sm_elem_ops *ops;
 	unsigned int caps;
 	unsigned int capture_group;
-} sm_selem_t;
-
-typedef struct _sm_class_basic {
-	char *device;
-	snd_ctl_t *ctl;
-	snd_hctl_t *hctl;
-	snd_ctl_card_info_t *info;
-} sm_class_basic_t;
+} sm_elem_t;
 
 struct sm_elem_ops {	
-	int (*is)(snd_mixer_elem_t *elem, int dir, int cmd, int val);
-	int (*get_range)(snd_mixer_elem_t *elem, int dir, long *min, long *max);
-	int (*set_range)(snd_mixer_elem_t *elem, int dir, long min, long max);
-	int (*get_dB_range)(snd_mixer_elem_t *elem, int dir, long *min, long *max);
-	int (*ask_vol_dB)(snd_mixer_elem_t *elem, int dir, long value, long *dbValue);
-	int (*ask_dB_vol)(snd_mixer_elem_t *elem, int dir, long dbValue, long *value, int xdir);
-	int (*get_volume)(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, long *value);
-	int (*get_dB)(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, long *value);
-	int (*set_volume)(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, long value);
-	int (*set_dB)(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, long value, int xdir);
-	int (*get_switch)(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, int *value);
-	int (*set_switch)(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, int value);
-	int (*enum_item_name)(snd_mixer_elem_t *elem, unsigned int item, size_t maxlen, char *buf);
-	int (*get_enum_item)(snd_mixer_elem_t *elem, snd_mixer_selem_channel_id_t channel, unsigned int *itemp);
-	int (*set_enum_item)(snd_mixer_elem_t *elem, snd_mixer_selem_channel_id_t channel, unsigned int item);
+	int (*is)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, int cmd, int val);
+	int (*get_channels)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir);
+	int (*get_range)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, long *min, long *max);
+	int (*set_range)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, long min, long max);
+	int (*get_dB_range)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, long *min, long *max);
+	int (*ask_vol_dB)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, long value, long *dbValue);
+	int (*ask_dB_vol)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, long dbValue, long *value, int xdir);
+	int (*get_volume)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, long *value);
+	int (*get_dB)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, long *value);
+	int (*set_volume)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, long value);
+	int (*set_dB)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, long value, int xdir);
+	int (*get_switch)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, int *value);
+	int (*set_switch)(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, int value);
+	int (*enum_item_name)(snd_amixer_elem_t *elem, unsigned int item, size_t maxlen, char *buf);
+	int (*get_enum_item)(snd_amixer_elem_t *elem, snd_amixer_elem_channel_id_t channel, unsigned int *itemp);
+	int (*set_enum_item)(snd_amixer_elem_t *elem, snd_amixer_elem_channel_id_t channel, unsigned int item);
 };
 
-int snd_mixer_selem_compare(const snd_mixer_elem_t *c1, const snd_mixer_elem_t *c2);
+struct sm_open {
+	const char *name;
+	snd_pcm_t *pcm_playback;
+	snd_pcm_t *pcm_capture;
+	int mode;
+	snd_ctl_t *ctl[SM_CTL_COUNT];
+};
 
-int snd_mixer_sbasic_info(const snd_mixer_class_t *class, sm_class_basic_t *info);
-void *snd_mixer_sbasic_get_private(const snd_mixer_class_t *class);
-void snd_mixer_sbasic_set_private(const snd_mixer_class_t *class, void *private_data);
-void snd_mixer_sbasic_set_private_free(const snd_mixer_class_t *class, void (*private_free)(snd_mixer_class_t *class));
+sm_elem_t *snd_amixer_elem_get_sm(snd_amixer_elem_t *elem);
 
 /** \} */
 
@@ -109,4 +105,3 @@ void snd_mixer_sbasic_set_private_free(const snd_mixer_class_t *class, void (*pr
 #endif
 
 #endif /* __ALSA_MIXER_ABST_H */
-

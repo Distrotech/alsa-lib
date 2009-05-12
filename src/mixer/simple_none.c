@@ -5,7 +5,7 @@
  * \author Abramo Bagnara <abramo@alsa-project.org>
  * \date 2001-2004
  *
- * Mixer simple element class interface.
+ * Mixer simple element interface.
  */
 /*
  *  Mixer Interface - simple controls
@@ -39,7 +39,12 @@
 #include <math.h>
 #include <limits.h>
 #include <alsa/asoundlib.h>
-#include "mixer_simple.h"
+#include "mixer_abst.h"
+
+#ifndef PIC
+/* entry for static linking */
+const char *_snd_module_mixer_none = "";
+#endif
 
 #ifndef DOC_HIDDEN
 
@@ -66,7 +71,7 @@ typedef enum _selem_ctl_type {
 } selem_ctl_type_t;
 
 typedef struct _selem_ctl {
-	snd_hctl_elem_t *elem;
+	snd_ctl_elem_t *elem;
 	snd_ctl_elem_type_t type;
 	unsigned int inactive: 1;
 	unsigned int values;
@@ -74,7 +79,6 @@ typedef struct _selem_ctl {
 } selem_ctl_t;
 
 typedef struct _selem_none {
-	sm_selem_t selem;
 	selem_ctl_t ctls[CTL_LAST + 1];
 	unsigned int capture_item;
 	struct selem_str {
@@ -211,7 +215,7 @@ static int get_compare_weight(const char *name, unsigned int idx)
 	return MIXER_COMPARE_WEIGHT_SIMPLE_BASE + res + idx;
 }
 
-static long to_user(selem_none_t *s, int dir, selem_ctl_t *c, long value)
+static long to_user(selem_none_t *s, snd_amixer_dir_t dir, selem_ctl_t *c, long value)
 {
 	int64_t n;
 	if (c->max == c->min)
@@ -220,7 +224,7 @@ static long to_user(selem_none_t *s, int dir, selem_ctl_t *c, long value)
 	return s->str[dir].min + (n + (c->max - c->min) / 2) / (c->max - c->min);
 }
 
-static long from_user(selem_none_t *s, int dir, selem_ctl_t *c, long value)
+static long from_user(selem_none_t *s, snd_amixer_dir_t dir, selem_ctl_t *c, long value)
 {
 	int64_t n;
 	if (s->str[dir].max == s->str[dir].min)
@@ -229,14 +233,15 @@ static long from_user(selem_none_t *s, int dir, selem_ctl_t *c, long value)
 	return c->min + (n + (s->str[dir].max - s->str[dir].min) / 2) / (s->str[dir].max - s->str[dir].min);
 }
 
-static int elem_read_volume(selem_none_t *s, int dir, selem_ctl_type_t type)
+static int elem_read_volume(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, selem_ctl_type_t type)
 {
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	snd_ctl_elem_value_t *ctl;
 	unsigned int idx;
 	int err;
 	selem_ctl_t *c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < s->str[dir].channels; idx++) {
 		unsigned int idx1 = idx;
@@ -247,14 +252,15 @@ static int elem_read_volume(selem_none_t *s, int dir, selem_ctl_type_t type)
 	return 0;
 }
 
-static int elem_read_switch(selem_none_t *s, int dir, selem_ctl_type_t type)
+static int elem_read_switch(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, selem_ctl_type_t type)
 {
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	snd_ctl_elem_value_t *ctl;
 	unsigned int idx;
 	int err;
 	selem_ctl_t *c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < s->str[dir].channels; idx++) {
 		unsigned int idx1 = idx;
@@ -266,14 +272,15 @@ static int elem_read_switch(selem_none_t *s, int dir, selem_ctl_type_t type)
 	return 0;
 }
 
-static int elem_read_route(selem_none_t *s, int dir, selem_ctl_type_t type)
+static int elem_read_route(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, selem_ctl_type_t type)
 {
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	snd_ctl_elem_value_t *ctl;
 	unsigned int idx;
 	int err;
 	selem_ctl_t *c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < s->str[dir].channels; idx++) {
 		unsigned int idx1 = idx;
@@ -285,23 +292,25 @@ static int elem_read_route(selem_none_t *s, int dir, selem_ctl_type_t type)
 	return 0;
 }
 
-static int elem_read_enum(selem_none_t *s)
+static int elem_read_enum(snd_amixer_elem_t *elem)
 {
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	snd_ctl_elem_value_t *ctl;
 	unsigned int idx;
 	int err;
 	int type;
 	selem_ctl_t *c;
 	type = CTL_GLOBAL_ENUM;
-	if ( (s->selem.caps & (SM_CAP_CENUM | SM_CAP_PENUM)) == (SM_CAP_CENUM | SM_CAP_PENUM) )
+	if ( (sm->caps & (SM_CAP_CENUM | SM_CAP_PENUM)) == (SM_CAP_CENUM | SM_CAP_PENUM) )
 		type = CTL_GLOBAL_ENUM;
-	else if (s->selem.caps & SM_CAP_PENUM)
+	else if (sm->caps & SM_CAP_PENUM)
 		type = CTL_PLAYBACK_ENUM;
-	else if (s->selem.caps & SM_CAP_CENUM)
+	else if (sm->caps & SM_CAP_CENUM)
 		type = CTL_CAPTURE_ENUM;
 	c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < s->str[0].channels; idx++) {
 		unsigned int idx1 = idx;
@@ -312,16 +321,14 @@ static int elem_read_enum(selem_none_t *s)
 	return 0;
 }
 
-static int selem_read(snd_mixer_elem_t *elem)
+static int selem_read(snd_amixer_elem_t *elem)
 {
-	selem_none_t *s;
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	unsigned int idx;
 	int err = 0;
 	long pvol[32], cvol[32];
 	unsigned int psw, csw;
-
-	assert(snd_mixer_elem_get_type(elem) == SND_MIXER_ELEM_SIMPLE);
-	s = snd_mixer_elem_get_private(elem);
 
 	memcpy(pvol, s->str[SM_PLAY].vol, sizeof(pvol));
 	memset(&s->str[SM_PLAY].vol, 0, sizeof(s->str[SM_PLAY].vol));
@@ -333,21 +340,21 @@ static int selem_read(snd_mixer_elem_t *elem)
 	s->str[SM_CAPT].sw = ~0U;
 
 	if (s->ctls[CTL_GLOBAL_ENUM].elem) {
-		err = elem_read_enum(s);
+		err = elem_read_enum(elem);
 		if (err < 0)
 			return err;
 		goto __skip_cswitch;
 	}
 
 	if (s->ctls[CTL_CAPTURE_ENUM].elem) {
-		err = elem_read_enum(s);
+		err = elem_read_enum(elem);
 		if (err < 0)
 			return err;
 		goto __skip_cswitch;
 	}
 
 	if (s->ctls[CTL_PLAYBACK_ENUM].elem) {
-		err = elem_read_enum(s);
+		err = elem_read_enum(elem);
 		if (err < 0)
 			return err;
 		goto __skip_cswitch;
@@ -355,84 +362,84 @@ static int selem_read(snd_mixer_elem_t *elem)
 
 
 	if (s->ctls[CTL_PLAYBACK_VOLUME].elem)
-		err = elem_read_volume(s, SM_PLAY, CTL_PLAYBACK_VOLUME);
+		err = elem_read_volume(elem, SM_PLAY, CTL_PLAYBACK_VOLUME);
 	else if (s->ctls[CTL_GLOBAL_VOLUME].elem)
-		err = elem_read_volume(s, SM_PLAY, CTL_GLOBAL_VOLUME);
+		err = elem_read_volume(elem, SM_PLAY, CTL_GLOBAL_VOLUME);
 	else if (s->ctls[CTL_SINGLE].elem &&
 		 s->ctls[CTL_SINGLE].type == SND_CTL_ELEM_TYPE_INTEGER)
-		err = elem_read_volume(s, SM_PLAY, CTL_SINGLE);
+		err = elem_read_volume(elem, SM_PLAY, CTL_SINGLE);
 	if (err < 0)
 		return err;
 
-	if ((s->selem.caps & (SM_CAP_GSWITCH|SM_CAP_PSWITCH)) == 0) {
+	if ((sm->caps & (SM_CAP_GSWITCH|SM_CAP_PSWITCH)) == 0) {
 		s->str[SM_PLAY].sw = 0;
 		goto __skip_pswitch;
 	}
 	if (s->ctls[CTL_PLAYBACK_SWITCH].elem) {
-		err = elem_read_switch(s, SM_PLAY, CTL_PLAYBACK_SWITCH);
+		err = elem_read_switch(elem, SM_PLAY, CTL_PLAYBACK_SWITCH);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_GLOBAL_SWITCH].elem) {
-		err = elem_read_switch(s, SM_PLAY, CTL_GLOBAL_SWITCH);
+		err = elem_read_switch(elem, SM_PLAY, CTL_GLOBAL_SWITCH);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_SINGLE].elem &&
 	    s->ctls[CTL_SINGLE].type == SND_CTL_ELEM_TYPE_BOOLEAN) {
-		err = elem_read_switch(s, SM_PLAY, CTL_SINGLE);
+		err = elem_read_switch(elem, SM_PLAY, CTL_SINGLE);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_PLAYBACK_ROUTE].elem) {
-		err = elem_read_route(s, SM_PLAY, CTL_PLAYBACK_ROUTE);
+		err = elem_read_route(elem, SM_PLAY, CTL_PLAYBACK_ROUTE);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_GLOBAL_ROUTE].elem) {
-		err = elem_read_route(s, SM_PLAY, CTL_GLOBAL_ROUTE);
+		err = elem_read_route(elem, SM_PLAY, CTL_GLOBAL_ROUTE);
 		if (err < 0)
 			return err;
 	}
       __skip_pswitch:
 
 	if (s->ctls[CTL_CAPTURE_VOLUME].elem)
-		err = elem_read_volume(s, SM_CAPT, CTL_CAPTURE_VOLUME);
+		err = elem_read_volume(elem, SM_CAPT, CTL_CAPTURE_VOLUME);
 	else if (s->ctls[CTL_GLOBAL_VOLUME].elem)
-		err = elem_read_volume(s, SM_CAPT, CTL_GLOBAL_VOLUME);
+		err = elem_read_volume(elem, SM_CAPT, CTL_GLOBAL_VOLUME);
 	else if (s->ctls[CTL_SINGLE].elem &&
 		 s->ctls[CTL_SINGLE].type == SND_CTL_ELEM_TYPE_INTEGER)
-		err = elem_read_volume(s, SM_CAPT, CTL_SINGLE);
+		err = elem_read_volume(elem, SM_CAPT, CTL_SINGLE);
 	if (err < 0)
 		return err;
 
-	if ((s->selem.caps & (SM_CAP_GSWITCH|SM_CAP_CSWITCH)) == 0) {
+	if ((sm->caps & (SM_CAP_GSWITCH|SM_CAP_CSWITCH)) == 0) {
 		s->str[SM_CAPT].sw = 0;
 		goto __skip_cswitch;
 	}
 	if (s->ctls[CTL_CAPTURE_SWITCH].elem) {
-		err = elem_read_switch(s, SM_CAPT, CTL_CAPTURE_SWITCH);
+		err = elem_read_switch(elem, SM_CAPT, CTL_CAPTURE_SWITCH);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_GLOBAL_SWITCH].elem) {
-		err = elem_read_switch(s, SM_CAPT, CTL_GLOBAL_SWITCH);
+		err = elem_read_switch(elem, SM_CAPT, CTL_GLOBAL_SWITCH);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_SINGLE].elem &&
 	    s->ctls[CTL_SINGLE].type == SND_CTL_ELEM_TYPE_BOOLEAN) {
-		err = elem_read_switch(s, SM_CAPT, CTL_SINGLE);
+		err = elem_read_switch(elem, SM_CAPT, CTL_SINGLE);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_CAPTURE_ROUTE].elem) {
-		err = elem_read_route(s, SM_CAPT, CTL_CAPTURE_ROUTE);
+		err = elem_read_route(elem, SM_CAPT, CTL_CAPTURE_ROUTE);
 		if (err < 0)
 			return err;
 	}
 	if (s->ctls[CTL_GLOBAL_ROUTE].elem) {
-		err = elem_read_route(s, SM_CAPT, CTL_GLOBAL_ROUTE);
+		err = elem_read_route(elem, SM_CAPT, CTL_GLOBAL_ROUTE);
 		if (err < 0)
 			return err;
 	}
@@ -440,7 +447,7 @@ static int selem_read(snd_mixer_elem_t *elem)
 		snd_ctl_elem_value_t *ctl;
 		selem_ctl_t *c = &s->ctls[CTL_CAPTURE_SOURCE];
 		snd_ctl_elem_value_alloca(&ctl);
-		err = snd_hctl_elem_read(c->elem, ctl);
+		err = snd_ctl_celem_read(c->elem, ctl);
 		if (err < 0)
 			return err;
 		for (idx = 0; idx < s->str[SM_CAPT].channels; idx++) {
@@ -461,34 +468,34 @@ static int selem_read(snd_mixer_elem_t *elem)
 	return 0;
 }
 
-static int elem_write_volume(selem_none_t *s, int dir, selem_ctl_type_t type)
+static int elem_write_volume(selem_none_t *s, snd_amixer_dir_t dir, selem_ctl_type_t type)
 {
 	snd_ctl_elem_value_t *ctl;
 	unsigned int idx;
 	int err;
 	selem_ctl_t *c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < c->values; idx++)
 		snd_ctl_elem_value_set_integer(ctl, idx, from_user(s, dir, c, s->str[dir].vol[idx]));
-	if ((err = snd_hctl_elem_write(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_write(c->elem, ctl)) < 0)
 		return err;
 	return 0;
 }
 
-static int elem_write_switch(selem_none_t *s, int dir, selem_ctl_type_t type)
+static int elem_write_switch(selem_none_t *s, snd_amixer_dir_t dir, selem_ctl_type_t type)
 {
 	snd_ctl_elem_value_t *ctl;
 	unsigned int idx;
 	int err;
 	selem_ctl_t *c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < c->values; idx++)
 		snd_ctl_elem_value_set_integer(ctl, idx, !!(s->str[dir].sw & (1 << idx)));
-	if ((err = snd_hctl_elem_write(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_write(c->elem, ctl)) < 0)
 		return err;
 	return 0;
 }
@@ -500,75 +507,75 @@ static int elem_write_switch_constant(selem_none_t *s, selem_ctl_type_t type, in
 	int err;
 	selem_ctl_t *c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < c->values; idx++)
 		snd_ctl_elem_value_set_integer(ctl, idx, !!val);
-	if ((err = snd_hctl_elem_write(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_write(c->elem, ctl)) < 0)
 		return err;
 	return 0;
 }
 
-static int elem_write_route(selem_none_t *s, int dir, selem_ctl_type_t type)
+static int elem_write_route(selem_none_t *s, snd_amixer_dir_t dir, selem_ctl_type_t type)
 {
 	snd_ctl_elem_value_t *ctl;
 	unsigned int idx;
 	int err;
 	selem_ctl_t *c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < c->values * c->values; idx++)
 		snd_ctl_elem_value_set_integer(ctl, idx, 0);
 	for (idx = 0; idx < c->values; idx++)
 		snd_ctl_elem_value_set_integer(ctl, idx * c->values + idx, !!(s->str[dir].sw & (1 << idx)));
-	if ((err = snd_hctl_elem_write(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_write(c->elem, ctl)) < 0)
 		return err;
 	return 0;
 }
 
-static int elem_write_enum(selem_none_t *s)
+static int elem_write_enum(snd_amixer_elem_t *elem)
 {
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	snd_ctl_elem_value_t *ctl;
+
 	unsigned int idx;
 	int err;
 	int type;
 	selem_ctl_t *c;
 	type = CTL_GLOBAL_ENUM;
-	if ( (s->selem.caps & (SM_CAP_CENUM | SM_CAP_PENUM) ) == (SM_CAP_CENUM | SM_CAP_PENUM) )
+	if ( (sm->caps & (SM_CAP_CENUM | SM_CAP_PENUM) ) == (SM_CAP_CENUM | SM_CAP_PENUM) )
 		type = CTL_GLOBAL_ENUM;
-	else if (s->selem.caps & SM_CAP_PENUM)
+	else if (sm->caps & SM_CAP_PENUM)
 		type = CTL_PLAYBACK_ENUM;
-	else if (s->selem.caps & SM_CAP_CENUM)
+	else if (sm->caps & SM_CAP_CENUM)
 		type = CTL_CAPTURE_ENUM;
 	c = &s->ctls[type];
 	snd_ctl_elem_value_alloca(&ctl);
-	if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 		return err;
 	for (idx = 0; idx < c->values; idx++)
 		snd_ctl_elem_value_set_enumerated(ctl, idx, (unsigned int)s->str[0].vol[idx]);
-	if ((err = snd_hctl_elem_write(c->elem, ctl)) < 0)
+	if ((err = snd_ctl_celem_write(c->elem, ctl)) < 0)
 		return err;
 	return 0;
 }
 
-static int selem_write_main(snd_mixer_elem_t *elem)
+static int selem_write_main(snd_amixer_elem_t *elem)
 {
-	selem_none_t *s;
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	unsigned int idx;
 	int err;
 
-	assert(snd_mixer_elem_get_type(elem) == SND_MIXER_ELEM_SIMPLE);
-	s = snd_mixer_elem_get_private(elem);
-
 	if (s->ctls[CTL_GLOBAL_ENUM].elem)
-		return elem_write_enum(s);
+		return elem_write_enum(elem);
 
 	if (s->ctls[CTL_PLAYBACK_ENUM].elem)
-		return elem_write_enum(s);
+		return elem_write_enum(elem);
 
 	if (s->ctls[CTL_CAPTURE_ENUM].elem)
-		return elem_write_enum(s);
+		return elem_write_enum(elem);
 
 	if (s->ctls[CTL_SINGLE].elem) {
 		if (s->ctls[CTL_SINGLE].type == SND_CTL_ELEM_TYPE_INTEGER)
@@ -625,13 +632,13 @@ static int selem_write_main(snd_mixer_elem_t *elem)
 		snd_ctl_elem_value_t *ctl;
 		selem_ctl_t *c = &s->ctls[CTL_CAPTURE_SOURCE];
 		snd_ctl_elem_value_alloca(&ctl);
-		if ((err = snd_hctl_elem_read(c->elem, ctl)) < 0)
+		if ((err = snd_ctl_celem_read(c->elem, ctl)) < 0)
 			return err;
 		for (idx = 0; idx < c->values; idx++) {
 			if (s->str[SM_CAPT].sw & (1 << idx))
 				snd_ctl_elem_value_set_enumerated(ctl, idx, s->capture_item);
 		}
-		if ((err = snd_hctl_elem_write(c->elem, ctl)) < 0)
+		if ((err = snd_ctl_celem_write(c->elem, ctl)) < 0)
 			return err;
 		/* update the element, don't remove */
 		err = selem_read(elem);
@@ -641,7 +648,7 @@ static int selem_write_main(snd_mixer_elem_t *elem)
 	return 0;
 }
 
-static int selem_write(snd_mixer_elem_t *elem)
+static int selem_write(snd_amixer_elem_t *elem)
 {
 	int err;
 	
@@ -651,21 +658,19 @@ static int selem_write(snd_mixer_elem_t *elem)
 	return err;
 }
 
-static void selem_free(snd_mixer_elem_t *elem)
+static void selem_free(snd_amixer_elem_t *elem)
 {
-	selem_none_t *simple = snd_mixer_elem_get_private(elem);
-	assert(snd_mixer_elem_get_type(elem) == SND_MIXER_ELEM_SIMPLE);
-	if (simple->selem.id)
-		snd_mixer_selem_id_free(simple->selem.id);
+	selem_none_t *simple = snd_amixer_elem_get_private(elem);
 	/* free db range information */
 	free(simple->str[0].db_info);
 	free(simple->str[1].db_info);
 	free(simple);
 }
 
-static int simple_update(snd_mixer_elem_t *melem)
+static int simple_update(snd_amixer_elem_t *melem)
 {
 	selem_none_t *simple;
+	sm_elem_t *sm;
 	unsigned int caps, pchannels, cchannels;
 	long pmin, pmax, cmin, cmax;
 	selem_ctl_t *ctl;
@@ -678,9 +683,9 @@ static int simple_update(snd_mixer_elem_t *melem)
 	cchannels = 0;
 	cmin = LONG_MAX;
 	cmax = LONG_MIN;
-	assert(snd_mixer_elem_get_type(melem) == SND_MIXER_ELEM_SIMPLE);
-	simple = snd_mixer_elem_get_private(melem);
-	name = snd_mixer_selem_get_name(melem);
+	simple = snd_amixer_elem_get_private(melem);
+	sm = snd_amixer_elem_get_sm(melem);
+	name = snd_amixer_elem_get_name(melem);
 	ctl = &simple->ctls[CTL_SINGLE];
 	if (ctl->elem) {
 		pchannels = cchannels = ctl->values;
@@ -868,7 +873,7 @@ static int simple_update(snd_mixer_elem_t *melem)
 	    (caps & (SM_CAP_PVOLUME|SM_CAP_CVOLUME)) == 0)
 		caps |= SM_CAP_PVOLUME|SM_CAP_CVOLUME;
 
-	simple->selem.caps = caps;
+	sm->caps = caps;
 	simple->str[SM_PLAY].channels = pchannels;
 	if (!simple->str[SM_PLAY].range) {
 		simple->str[SM_PLAY].min = pmin != LONG_MAX ? pmin : 0;
@@ -943,16 +948,17 @@ static int base_len(const char *name, selem_ctl_type_t *type)
  * Simple Mixer Operations
  */
 	
-static int _snd_mixer_selem_set_volume(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, long value)
+static int _snd_amixer_selem_set_volume(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, long value)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
-	if (s->selem.caps & SM_CAP_GVOLUME)
+	selem_none_t *s = snd_amixer_elem_get_private(elem);   
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
+	if (sm->caps & SM_CAP_GVOLUME)
 		dir = SM_PLAY;
 	if ((unsigned int) channel >= s->str[dir].channels)
 		return 0;
 	if (value < s->str[dir].min || value > s->str[dir].max)
 		return 0;
-	if (s->selem.caps & 
+	if (sm->caps & 
 	    (dir == SM_PLAY ? SM_CAP_PVOLUME_JOIN : SM_CAP_CVOLUME_JOIN))
 		channel = 0;
 	if (value != s->str[dir].vol[channel]) {
@@ -962,12 +968,14 @@ static int _snd_mixer_selem_set_volume(snd_mixer_elem_t *elem, int dir, snd_mixe
 	return 0;
 }
 
-static int _snd_mixer_selem_set_switch(snd_mixer_elem_t *elem, int dir, snd_mixer_selem_channel_id_t channel, int value)
+static int _snd_amixer_selem_set_switch(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, snd_amixer_elem_channel_id_t channel, int value)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
+
 	if ((unsigned int) channel >= s->str[dir].channels)
 		return 0;
-	if (s->selem.caps & 
+	if (sm->caps & 
 	    (dir == SM_PLAY ? SM_CAP_PSWITCH_JOIN : SM_CAP_CSWITCH_JOIN))
 		channel = 0;
 	if (value) {
@@ -984,9 +992,10 @@ static int _snd_mixer_selem_set_switch(snd_mixer_elem_t *elem, int dir, snd_mixe
 	return 0;
 }
 
-static int is_ops(snd_mixer_elem_t *elem, int dir, int cmd, int val)
+static int is_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir, int cmd, int val)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	
 	switch (cmd) {
 
@@ -998,37 +1007,31 @@ static int is_ops(snd_mixer_elem_t *elem, int dir, int cmd, int val)
 		return 1;
 	}
 
-	case SM_OPS_IS_MONO:
-		return s->str[dir].channels == 1;
-
 	case SM_OPS_IS_CHANNEL:
 		return (unsigned int) val < s->str[dir].channels;
 
 	case SM_OPS_IS_ENUMERATED:
-		if (val == 1) {
-			if (dir == SM_PLAY && (s->selem.caps & SM_CAP_PENUM) && !(s->selem.caps & SM_CAP_CENUM) )
-				return 1;
-			if (dir == SM_CAPT && (s->selem.caps & SM_CAP_CENUM) && !(s->selem.caps & SM_CAP_PENUM) )
-				return 1;
-			return 0;
-		}
-		if (s->selem.caps & (SM_CAP_CENUM | SM_CAP_PENUM) )
+		if (dir == SM_PLAY && (sm->caps & SM_CAP_PENUM) && !(sm->caps & SM_CAP_CENUM))
+			return 1;
+		if (dir == SM_CAPT && (sm->caps & SM_CAP_CENUM) && !(sm->caps & SM_CAP_PENUM))
+			return 1;
+		if (dir == SM_COMM && (sm->caps & (SM_CAP_CENUM|SM_CAP_PENUM)) == (SM_CAP_CENUM|SM_CAP_PENUM))
 			return 1;
 		return 0;
 	
 	case SM_OPS_IS_ENUMCNT:
 		/* Both */
-		if ( (s->selem.caps & (SM_CAP_CENUM | SM_CAP_PENUM)) == (SM_CAP_CENUM | SM_CAP_PENUM) ) {
+		if ( (sm->caps & (SM_CAP_CENUM | SM_CAP_PENUM)) == (SM_CAP_CENUM | SM_CAP_PENUM) ) {
 			if (! s->ctls[CTL_GLOBAL_ENUM].elem)
 				return -EINVAL;
 			return s->ctls[CTL_GLOBAL_ENUM].max;
 		/* Only Playback */
-		} else if (s->selem.caps & SM_CAP_PENUM ) {
+		} else if (sm->caps & SM_CAP_PENUM ) {
 			if (! s->ctls[CTL_PLAYBACK_ENUM].elem)
 				return -EINVAL;
 			return s->ctls[CTL_PLAYBACK_ENUM].max;
 		/* Only Capture */
-		} else if (s->selem.caps & SM_CAP_CENUM ) {
+		} else if (sm->caps & SM_CAP_CENUM ) {
 			if (! s->ctls[CTL_CAPTURE_ENUM].elem)
 				return -EINVAL;
 			return s->ctls[CTL_CAPTURE_ENUM].max;
@@ -1039,19 +1042,25 @@ static int is_ops(snd_mixer_elem_t *elem, int dir, int cmd, int val)
 	return 1;
 }
 
-static int get_range_ops(snd_mixer_elem_t *elem, int dir,
+static int get_channels_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir)
+{
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	return s->str[dir].channels;
+}
+
+static int get_range_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
 			 long *min, long *max)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	*min = s->str[dir].min;
 	*max = s->str[dir].max;
 	return 0;
 }
 
-static int set_range_ops(snd_mixer_elem_t *elem, int dir,
+static int set_range_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
 			 long min, long max)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	int err;
 
 	s->str[dir].range = 1;
@@ -1062,11 +1071,12 @@ static int set_range_ops(snd_mixer_elem_t *elem, int dir,
 	return 0;
 }
 
-static int get_volume_ops(snd_mixer_elem_t *elem, int dir,
-			  snd_mixer_selem_channel_id_t channel, long *value)
+static int get_volume_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
+			  snd_amixer_elem_channel_id_t channel, long *value)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
-	if (s->selem.caps & SM_CAP_GVOLUME)
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
+	if (sm->caps & SM_CAP_GVOLUME)
 		dir = SM_PLAY;
 	if ((unsigned int) channel >= s->str[dir].channels)
 		return -EINVAL;
@@ -1074,9 +1084,9 @@ static int get_volume_ops(snd_mixer_elem_t *elem, int dir,
 	return 0;
 }
 
-static int init_db_range(snd_hctl_elem_t *ctl, struct selem_str *rec);
+static int init_db_range(snd_ctl_elem_t *ctl, struct selem_str *rec);
 
-static int convert_to_dB(snd_hctl_elem_t *ctl, struct selem_str *rec,
+static int convert_to_dB(snd_ctl_elem_t *ctl, struct selem_str *rec,
 			 long volume, long *db_gain)
 {
 	if (init_db_range(ctl, rec) < 0)
@@ -1087,7 +1097,7 @@ static int convert_to_dB(snd_hctl_elem_t *ctl, struct selem_str *rec,
 
 /* initialize dB range information, reading TLV via hcontrol
  */
-static int init_db_range(snd_hctl_elem_t *ctl, struct selem_str *rec)
+static int init_db_range(snd_ctl_elem_t *ctl, struct selem_str *rec)
 {
 	snd_ctl_elem_info_t *info;
 	unsigned int *tlv = NULL;
@@ -1101,14 +1111,14 @@ static int init_db_range(snd_hctl_elem_t *ctl, struct selem_str *rec)
 		return 0;
 
 	snd_ctl_elem_info_alloca(&info);
-	if (snd_hctl_elem_info(ctl, info) < 0)
+	if (snd_ctl_celem_info(ctl, info) < 0)
 		goto error;
 	if (! snd_ctl_elem_info_is_tlv_readable(info))
 		goto error;
 	tlv = malloc(tlv_size);
 	if (! tlv)
 		return -ENOMEM;
-	if (snd_hctl_elem_tlv_read(ctl, tlv, tlv_size) < 0)
+	if (snd_ctl_celem_tlv_read(ctl, tlv, tlv_size) < 0)
 		goto error;
 	db_size = snd_tlv_parse_dB_info(tlv, tlv_size, &dbrec);
 	if (db_size < 0)
@@ -1128,7 +1138,7 @@ static int init_db_range(snd_hctl_elem_t *ctl, struct selem_str *rec)
 }
 
 /* get selem_ctl for TLV access */
-static selem_ctl_t *get_selem_ctl(selem_none_t *s, int dir)
+static selem_ctl_t *get_selem_ctl(selem_none_t *s, snd_amixer_dir_t dir)
 {
 	selem_ctl_t *c;
 	if (dir == SM_PLAY)
@@ -1147,7 +1157,7 @@ static selem_ctl_t *get_selem_ctl(selem_none_t *s, int dir)
 	return c;
 }
 
-static int get_dB_range(snd_hctl_elem_t *ctl, struct selem_str *rec,
+static int get_dB_range(snd_ctl_elem_t *ctl, struct selem_str *rec,
 			long *min, long *max)
 {
 	if (init_db_range(ctl, rec) < 0)
@@ -1156,13 +1166,14 @@ static int get_dB_range(snd_hctl_elem_t *ctl, struct selem_str *rec,
 	return snd_tlv_get_dB_range(rec->db_info, rec->min, rec->max, min, max);
 }
 	
-static int get_dB_range_ops(snd_mixer_elem_t *elem, int dir,
+static int get_dB_range_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
 			    long *min, long *max)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	selem_ctl_t *c;
 
-	if (s->selem.caps & SM_CAP_GVOLUME)
+	if (sm->caps & SM_CAP_GVOLUME)
 		dir = SM_PLAY;
 	c = get_selem_ctl(s, dir);
 	if (! c)
@@ -1170,7 +1181,7 @@ static int get_dB_range_ops(snd_mixer_elem_t *elem, int dir,
 	return get_dB_range(c->elem, &s->str[dir], min, max);
 }
 
-static int convert_from_dB(snd_hctl_elem_t *ctl, struct selem_str *rec,
+static int convert_from_dB(snd_ctl_elem_t *ctl, struct selem_str *rec,
 			   long db_gain, long *value, int xdir)
 {
 	if (init_db_range(ctl, rec) < 0)
@@ -1180,12 +1191,12 @@ static int convert_from_dB(snd_hctl_elem_t *ctl, struct selem_str *rec,
 				       db_gain, value, xdir);
 }
 
-static int ask_vol_dB_ops(snd_mixer_elem_t *elem,
-			  int dir,
+static int ask_vol_dB_ops(snd_amixer_elem_t *elem,
+			  snd_amixer_dir_t dir,
 			  long value,
 			  long *dBvalue)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	selem_ctl_t *c;
 
 	c = get_selem_ctl(s, dir);
@@ -1195,17 +1206,18 @@ static int ask_vol_dB_ops(snd_mixer_elem_t *elem,
 	return res;
 }
 
-static int get_dB_ops(snd_mixer_elem_t *elem,
-                      int dir,
-                      snd_mixer_selem_channel_id_t channel,
+static int get_dB_ops(snd_amixer_elem_t *elem,
+                      snd_amixer_dir_t dir,
+                      snd_amixer_elem_channel_id_t channel,
                       long *value)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	selem_ctl_t *c;
 	int err;
 	long volume, db_gain;
 
-	if (s->selem.caps & SM_CAP_GVOLUME)
+	if (sm->caps & SM_CAP_GVOLUME)
 		dir = SM_PLAY;
 	c = get_selem_ctl(s, dir);
 	if (! c)
@@ -1220,11 +1232,12 @@ static int get_dB_ops(snd_mixer_elem_t *elem,
 	return err;
 }
 
-static int get_switch_ops(snd_mixer_elem_t *elem, int dir,
-			  snd_mixer_selem_channel_id_t channel, int *value)
+static int get_switch_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
+			  snd_amixer_elem_channel_id_t channel, int *value)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
-	if (s->selem.caps & SM_CAP_GSWITCH)
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
+	if (sm->caps & SM_CAP_GSWITCH)
 		dir = SM_PLAY;
 	if ((unsigned int) channel >= s->str[dir].channels)
 		return -EINVAL;
@@ -1232,11 +1245,11 @@ static int get_switch_ops(snd_mixer_elem_t *elem, int dir,
 	return 0;
 }
 
-static int set_volume_ops(snd_mixer_elem_t *elem, int dir,
-			  snd_mixer_selem_channel_id_t channel, long value)
+static int set_volume_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
+			  snd_amixer_elem_channel_id_t channel, long value)
 {
 	int changed;
-	changed = _snd_mixer_selem_set_volume(elem, dir, channel, value);
+	changed = _snd_amixer_selem_set_volume(elem, dir, channel, value);
 	if (changed < 0)
 		return changed;
 	if (changed)
@@ -1244,13 +1257,14 @@ static int set_volume_ops(snd_mixer_elem_t *elem, int dir,
 	return 0;
 }
 
-static int ask_dB_vol_ops(snd_mixer_elem_t *elem, int dir,
+static int ask_dB_vol_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
 		          long dbValue, long *value, int xdir)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	selem_ctl_t *c;
 
-	if (s->selem.caps & SM_CAP_GVOLUME)
+	if (sm->caps & SM_CAP_GVOLUME)
 		dir = SM_PLAY;
 	c = get_selem_ctl(s, dir);
 	if (! c)
@@ -1258,16 +1272,17 @@ static int ask_dB_vol_ops(snd_mixer_elem_t *elem, int dir,
 	return convert_from_dB(c->elem, &s->str[dir], dbValue, value, xdir);
 }
 
-static int set_dB_ops(snd_mixer_elem_t *elem, int dir,
-		      snd_mixer_selem_channel_id_t channel,
+static int set_dB_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
+		      snd_amixer_elem_channel_id_t channel,
 		      long db_gain, int xdir)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
 	selem_ctl_t *c;
 	long value;
 	int err;
 
-	if (s->selem.caps & SM_CAP_GVOLUME)
+	if (sm->caps & SM_CAP_GVOLUME)
 		dir = SM_PLAY;
 	c = get_selem_ctl(s, dir);
 	if (! c)
@@ -1278,21 +1293,21 @@ static int set_dB_ops(snd_mixer_elem_t *elem, int dir,
 	return set_volume_ops(elem, dir, channel, value);
 }
 
-static int set_switch_ops(snd_mixer_elem_t *elem, int dir,
-			  snd_mixer_selem_channel_id_t channel, int value)
+static int set_switch_ops(snd_amixer_elem_t *elem, snd_amixer_dir_t dir,
+			  snd_amixer_elem_channel_id_t channel, int value)
 {
 	int changed;
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
-	if (s->selem.caps & SM_CAP_GSWITCH)
+	sm_elem_t *sm = snd_amixer_elem_get_sm(elem);
+	if (sm->caps & SM_CAP_GSWITCH)
 		dir = SM_PLAY;
 	if (dir == SM_PLAY) {
-		if (! (s->selem.caps & (SM_CAP_GSWITCH|SM_CAP_PSWITCH)))
+		if (! (sm->caps & (SM_CAP_GSWITCH|SM_CAP_PSWITCH)))
 			return -EINVAL;
 	} else {
-		if (! (s->selem.caps & (SM_CAP_GSWITCH|SM_CAP_CSWITCH)))
+		if (! (sm->caps & (SM_CAP_GSWITCH|SM_CAP_CSWITCH)))
 			return -EINVAL;
 	}
-	changed = _snd_mixer_selem_set_switch(elem, dir, channel, value);
+	changed = _snd_amixer_selem_set_switch(elem, dir, channel, value);
 	if (changed < 0)
 		return changed;
 	if (changed)
@@ -1300,13 +1315,13 @@ static int set_switch_ops(snd_mixer_elem_t *elem, int dir,
 	return 0;
 }
 
-static int enum_item_name_ops(snd_mixer_elem_t *elem,
+static int enum_item_name_ops(snd_amixer_elem_t *elem,
 			      unsigned int item,
 			      size_t maxlen, char *buf)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	snd_ctl_elem_info_t *info;
-	snd_hctl_elem_t *helem;
+	snd_ctl_elem_t *helem;
 	int type;
 
 	type = CTL_GLOBAL_ENUM;
@@ -1323,20 +1338,20 @@ static int enum_item_name_ops(snd_mixer_elem_t *elem,
 	if (item >= (unsigned int)s->ctls[type].max)
 		return -EINVAL;
 	snd_ctl_elem_info_alloca(&info);
-	snd_hctl_elem_info(helem, info);
+	snd_ctl_celem_info(helem, info);
 	snd_ctl_elem_info_set_item(info, item);
-	snd_hctl_elem_info(helem, info);
+	snd_ctl_celem_info(helem, info);
 	strncpy(buf, snd_ctl_elem_info_get_item_name(info), maxlen);
 	return 0;
 }
 
-static int get_enum_item_ops(snd_mixer_elem_t *elem,
-			     snd_mixer_selem_channel_id_t channel,
+static int get_enum_item_ops(snd_amixer_elem_t *elem,
+			     snd_amixer_elem_channel_id_t channel,
 			     unsigned int *itemp)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	snd_ctl_elem_value_t *ctl;
-	snd_hctl_elem_t *helem;
+	snd_ctl_elem_t *helem;
 	int err;
 
 	if ((unsigned int) channel >= s->str[0].channels)
@@ -1346,19 +1361,19 @@ static int get_enum_item_ops(snd_mixer_elem_t *elem,
 	if (!helem) helem = s->ctls[CTL_CAPTURE_ENUM].elem;
 	assert(helem);
 	snd_ctl_elem_value_alloca(&ctl);
-	err = snd_hctl_elem_read(helem, ctl);
+	err = snd_ctl_celem_read(helem, ctl);
 	if (! err)
 		*itemp = snd_ctl_elem_value_get_enumerated(ctl, channel);
 	return err;
 }
 
-static int set_enum_item_ops(snd_mixer_elem_t *elem,
-			     snd_mixer_selem_channel_id_t channel,
+static int set_enum_item_ops(snd_amixer_elem_t *elem,
+			     snd_amixer_elem_channel_id_t channel,
 			     unsigned int item)
 {
-	selem_none_t *s = snd_mixer_elem_get_private(elem);
+	selem_none_t *s = snd_amixer_elem_get_private(elem);
 	snd_ctl_elem_value_t *ctl;
-	snd_hctl_elem_t *helem;
+	snd_ctl_elem_t *helem;
 	int err;
 	int type;
 
@@ -1380,16 +1395,17 @@ static int set_enum_item_ops(snd_mixer_elem_t *elem,
 		return -EINVAL;
 	}
 	snd_ctl_elem_value_alloca(&ctl);
-	err = snd_hctl_elem_read(helem, ctl);
+	err = snd_ctl_celem_read(helem, ctl);
 	if (err < 0) {
 		return err;
 	}
 	snd_ctl_elem_value_set_enumerated(ctl, channel, item);
-	return snd_hctl_elem_write(helem, ctl);
+	return snd_ctl_celem_write(helem, ctl);
 }
 
 static struct sm_elem_ops simple_none_ops = {
 	.is		= is_ops,
+	.get_channels	= get_channels_ops,
 	.get_range	= get_range_ops,
 	.get_dB_range	= get_dB_range_ops,
 	.set_range	= set_range_ops,
@@ -1406,12 +1422,13 @@ static struct sm_elem_ops simple_none_ops = {
 	.set_enum_item	= set_enum_item_ops
 };
 
-static int simple_add1(snd_mixer_class_t *class, const char *name,
-		       snd_hctl_elem_t *helem, selem_ctl_type_t type,
+static int simple_add1(snd_amixer_t *amixer, const char *name,
+		       snd_ctl_elem_t *helem, selem_ctl_type_t type,
 		       unsigned int value)
 {
-	snd_mixer_elem_t *melem;
-	snd_mixer_selem_id_t *id;
+	snd_amixer_elem_t *melem;
+	sm_elem_t *sm;
+	snd_amixer_elem_id_t *id;
 	int new = 0;
 	int err;
 	snd_ctl_elem_info_t *info;
@@ -1421,7 +1438,7 @@ static int simple_add1(snd_mixer_class_t *class, const char *name,
 	unsigned long values;
 
 	snd_ctl_elem_info_alloca(&info);
-	err = snd_hctl_elem_info(helem, info);
+	err = snd_ctl_celem_info(helem, info);
 	if (err < 0)
 		return err;
 	ctype = snd_ctl_elem_info_get_type(info);
@@ -1508,39 +1525,42 @@ static int simple_add1(snd_mixer_class_t *class, const char *name,
 		break;
 	}
 	name1 = get_short_name(name);
-	if (snd_mixer_selem_id_malloc(&id))
+	if (snd_amixer_elem_id_malloc(&id))
 		return -ENOMEM;
-	snd_mixer_selem_id_set_name(id, name1);
-	snd_mixer_selem_id_set_index(id, snd_hctl_elem_get_index(helem));
-	melem = snd_mixer_find_selem(snd_mixer_class_get_mixer(class), id);
+	snd_amixer_elem_id_set_name(id, name1);
+	snd_amixer_elem_id_set_index(id, snd_ctl_elem_get_index(helem));
+	melem = snd_amixer_find_elem(amixer, id);
 	if (!melem) {
 		simple = calloc(1, sizeof(*simple));
 		if (!simple) {
-			snd_mixer_selem_id_free(id);
+			snd_amixer_elem_id_free(id);
 			return -ENOMEM;
 		}
-		simple->selem.id = id;
-		simple->selem.ops = &simple_none_ops;
-		err = snd_mixer_elem_new(&melem, SND_MIXER_ELEM_SIMPLE,
-					 get_compare_weight(snd_mixer_selem_id_get_name(simple->selem.id), snd_mixer_selem_id_get_index(simple->selem.id)),
-					 simple, selem_free);
+		err = snd_amixer_elem_new(amixer,
+					  &melem,
+					  id,
+					  get_compare_weight(snd_amixer_elem_id_get_name(id), snd_amixer_elem_id_get_index(id)),
+					  simple, selem_free);
+		snd_amixer_elem_id_free(id);
 		if (err < 0) {
-			snd_mixer_selem_id_free(id);
+			snd_amixer_elem_id_free(id);
 			free(simple);
 			return err;
 		}
+		sm = snd_amixer_elem_get_sm(melem);
+		sm->ops = &simple_none_ops;
 		new = 1;
 	} else {
-		simple = snd_mixer_elem_get_private(melem);
-		snd_mixer_selem_id_free(id);
+		simple = snd_amixer_elem_get_private(melem);
+		snd_amixer_elem_id_free(id);
 	}
 	if (simple->ctls[type].elem) {
 		SNDERR("helem (%s,'%s',%u,%u,%u) appears twice or more",
-				snd_ctl_elem_iface_name(snd_hctl_elem_get_interface(helem)),
-				snd_hctl_elem_get_name(helem),
-				snd_hctl_elem_get_index(helem),
-				snd_hctl_elem_get_device(helem),
-				snd_hctl_elem_get_subdevice(helem));
+				snd_ctl_elem_iface_name(snd_ctl_elem_get_interface(helem)),
+				snd_ctl_elem_get_name(helem),
+				snd_ctl_elem_get_index(helem),
+				snd_ctl_elem_get_device(helem),
+				snd_ctl_elem_get_subdevice(helem));
 		err = -EINVAL;
 		goto __error;
 	}
@@ -1566,7 +1586,7 @@ static int simple_add1(snd_mixer_class_t *class, const char *name,
 	default:
 		break;
 	}
-	err = snd_mixer_elem_attach(melem, helem);
+	err = snd_amixer_elem_attach(melem, helem);
 	if (err < 0)
 		goto __error;
 	err = simple_update(melem);
@@ -1576,36 +1596,36 @@ static int simple_add1(snd_mixer_class_t *class, const char *name,
 		return err;
 	}
 	if (new)
-		err = snd_mixer_elem_add(melem, class);
+		err = snd_amixer_elem_add(amixer, melem);
 	else
-		err = snd_mixer_elem_info(melem);
+		err = snd_amixer_elem_info(melem);
 	if (err < 0)
 		return err;
 	err = selem_read(melem);
 	if (err < 0)
 		return err;
 	if (err)
-		err = snd_mixer_elem_value(melem);
+		err = snd_amixer_elem_value(melem);
 	return err;
       __error:
 	if (new)
-		snd_mixer_elem_free(melem);
+		snd_amixer_elem_free(melem);
 	return -EINVAL;
 }
 
-static int simple_event_add(snd_mixer_class_t *class, snd_hctl_elem_t *helem)
+static int simple_event_add(snd_amixer_t *amixer, snd_ctl_elem_t *helem)
 {
-	const char *name = snd_hctl_elem_get_name(helem);
+	const char *name = snd_ctl_elem_get_name(helem);
 	size_t len;
 	selem_ctl_type_t type = CTL_SINGLE; /* to shut up warning */
-	if (snd_hctl_elem_get_interface(helem) != SND_CTL_ELEM_IFACE_MIXER)
+	if (snd_ctl_elem_get_interface(helem) != SND_CTL_ELEM_IFACE_MIXER)
 		return 0;
 	if (strcmp(name, "Capture Source") == 0) {
 		snd_ctl_elem_info_t *info;
 		unsigned int k, items;
 		int err;
 		snd_ctl_elem_info_alloca(&info);
-		err = snd_hctl_elem_info(helem, info);
+		err = snd_ctl_celem_info(helem, info);
 		assert(err >= 0);
 		if (snd_ctl_elem_info_get_type(info) != SND_CTL_ELEM_TYPE_ENUMERATED)
 			return 0;
@@ -1613,11 +1633,11 @@ static int simple_event_add(snd_mixer_class_t *class, snd_hctl_elem_t *helem)
 		for (k = 0; k < items; ++k) {
 			const char *n;
 			snd_ctl_elem_info_set_item(info, k);
-			err = snd_hctl_elem_info(helem, info);
+			err = snd_ctl_celem_info(helem, info);
 			if (err < 0)
 				return err;
 			n = snd_ctl_elem_info_get_item_name(info);
-			err = simple_add1(class, n, helem, CTL_CAPTURE_SOURCE, k);
+			err = simple_add1(amixer, n, helem, CTL_CAPTURE_SOURCE, k);
 			if (err < 0)
 				return err;
 		}
@@ -1625,7 +1645,7 @@ static int simple_event_add(snd_mixer_class_t *class, snd_hctl_elem_t *helem)
 	}
 	len = base_len(name, &type);
 	if (len == 0) {
-		return simple_add1(class, name, helem, CTL_SINGLE, 0);
+		return simple_add1(amixer, name, helem, CTL_SINGLE, 0);
 	} else {
 		char ename[128];
 		if (len >= sizeof(ename))
@@ -1637,14 +1657,14 @@ static int simple_event_add(snd_mixer_class_t *class, snd_hctl_elem_t *helem)
 			type = CTL_CAPTURE_VOLUME;
 		else if (type == CTL_GLOBAL_SWITCH && !strcmp(ename, "Capture"))
 			type = CTL_CAPTURE_SWITCH;
-		return simple_add1(class, ename, helem, type, 0);
+		return simple_add1(amixer, ename, helem, type, 0);
 	}
 }
 
-static int simple_event_remove(snd_hctl_elem_t *helem,
-			       snd_mixer_elem_t *melem)
+static int simple_event_remove(snd_ctl_elem_t *helem,
+			       snd_amixer_elem_t *melem)
 {
-	selem_none_t *simple = snd_mixer_elem_get_private(melem);
+	selem_none_t *simple = snd_amixer_elem_get_private(melem);
 	int err;
 	int k;
 	for (k = 0; k <= CTL_LAST; k++) {
@@ -1653,23 +1673,23 @@ static int simple_event_remove(snd_hctl_elem_t *helem,
 	}
 	assert(k <= CTL_LAST);
 	simple->ctls[k].elem = NULL;
-	err = snd_mixer_elem_detach(melem, helem);
+	err = snd_amixer_elem_detach(melem, helem);
 	if (err < 0)
 		return err;
-	if (snd_mixer_elem_empty(melem))
-		return snd_mixer_elem_remove(melem);
+	if (snd_amixer_elem_is_empty(melem))
+		return snd_amixer_elem_remove(melem);
 	err = simple_update(melem);
-	return snd_mixer_elem_info(melem);
+	return snd_amixer_elem_info(melem);
 }
 
-static int simple_event(snd_mixer_class_t *class, unsigned int mask,
-			snd_hctl_elem_t *helem, snd_mixer_elem_t *melem)
+static int simple_event(snd_amixer_t *amixer, unsigned int mask,
+			snd_ctl_elem_t *helem, snd_amixer_elem_t *melem)
 {
 	int err;
 	if (mask == SND_CTL_EVENT_MASK_REMOVE)
 		return simple_event_remove(helem, melem);
 	if (mask & SND_CTL_EVENT_MASK_ADD) {
-		err = simple_event_add(class, helem);
+		err = simple_event_add(amixer, helem);
 		if (err < 0)
 			return err;
 	}
@@ -1677,7 +1697,7 @@ static int simple_event(snd_mixer_class_t *class, unsigned int mask,
 		err = simple_event_remove(helem, melem);
 		if (err < 0)
 			return err;
-		err = simple_event_add(class, helem);
+		err = simple_event_add(amixer, helem);
 		if (err < 0)
 			return err;
 		return 0;
@@ -1687,7 +1707,7 @@ static int simple_event(snd_mixer_class_t *class, unsigned int mask,
 		if (err < 0)
 			return err;
 		if (err) {
-			err = snd_mixer_elem_value(melem);
+			err = snd_amixer_elem_value(melem);
 			if (err < 0)
 				return err;
 		}
@@ -1695,30 +1715,75 @@ static int simple_event(snd_mixer_class_t *class, unsigned int mask,
 	return 0;
 }
 
+#ifndef DOC_HIDDEN
 /**
- * \brief Register mixer simple element class - none abstraction
- * \param mixer Mixer handle
- * \param options Options container
- * \param classp Pointer to returned mixer simple element class handle (or NULL)
+ * \brief Open mixer - none abstraction
+ * \param amixer Mixer handle
+ * \param name Device name
+ * \param pcm_playback PCM handle for playback
+ * \param pcm_capture PCM handle for capture
+ * \param mode Open mode
  * \return 0 on success otherwise a negative error code
  */
-int snd_mixer_simple_none_register(snd_mixer_t *mixer,
-				   struct snd_mixer_selem_regopt *options ATTRIBUTE_UNUSED,
-				   snd_mixer_class_t **classp)
+int _snd_amixer_none_open(snd_amixer_t *amixer,
+			  snd_config_t *root ATTRIBUTE_UNUSED,
+			  snd_config_t *conf,
+			  struct sm_open *sm_open)
 {
-	snd_mixer_class_t *class;
+	snd_config_iterator_t i, next;
+	const char *str;
 	int err;
-
-	if (snd_mixer_class_malloc(&class))
-		return -ENOMEM;
-	snd_mixer_class_set_event(class, simple_event);
-	snd_mixer_class_set_compare(class, snd_mixer_selem_compare);
-	err = snd_mixer_class_register(class, mixer);
-	if (err < 0) {
-		free(class);
-		return err;
+	snd_config_t *n;
+	char ctlname[64];
+	
+	ctlname[0] = '\0';
+	if (sm_open->pcm_playback || sm_open->pcm_capture)
+		return -ENXIO;
+	snd_config_for_each(i, next, conf) {
+		const char *id;
+		n = snd_config_iterator_entry(i);
+		if (snd_config_get_id(n, &id) < 0)
+			continue;
+		if (snd_amixer_conf_generic_id(id))
+			continue;
+		if (strcmp(id, "card") == 0) {
+			long card = -1;
+			err = snd_config_get_integer(n, &card);
+			if (err < 0) {
+				err = snd_config_get_string(n, &str);
+				if (err < 0) {
+					SNDERR("Invalid type for %s", id);
+					return -EINVAL;
+				}
+				card = snd_card_get_index(str);
+				if (card < 0) {
+					SNDERR("Invalid value for %s", id);
+					return card;
+				}
+			}
+			sprintf(ctlname, "hw:%li", card);
+			continue;
+		}
+		if (strcmp(id, "ctlname") == 0) {
+			err = snd_config_get_string(n, &str);
+			if (err < 0) {
+				SNDERR("ctlname must be a string");
+				return -EINVAL;
+			}
+			strncpy(ctlname, str, sizeof(ctlname)-1);
+			ctlname[sizeof(ctlname)-1] = '\0';
+			continue;
+		}
+		SNDERR("Unknown field %s", id);
+		return -EINVAL;
 	}
-	if (classp)
-		*classp = class;
-	return 0;
+	if (ctlname[0] == '\0') {
+		SNDERR("card or ctlname is not defined");
+		return -EINVAL;
+	}
+	snd_amixer_set_event(amixer, simple_event);
+	return snd_ctl_open(&sm_open->ctl[0], ctlname, SND_CTL_CACHE);
 }
+
+SND_DLSYM_BUILD_VERSION(_snd_amixer_none_open, SND_AMIXER_DLSYM_VERSION);
+#endif
