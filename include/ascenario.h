@@ -128,7 +128,7 @@ extern "C" {
 #define SND_SCN_INT_QOS				1
 
 /** Scenario container */
-typedef snd_scenario_t snd_scenario_t;
+typedef struct snd_scenario snd_scenario_t;
 
 /* TODO: add notification */
 

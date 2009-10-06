@@ -109,14 +109,14 @@ static void scn_stdout(const char *fmt,...)
 	va_end(va);
 }
 
-static inline void set_value(struct snd_scenario *scn,
+static inline void set_value(snd_scenario_t *scn,
 	struct control_settings *control, int count, unsigned short val)
 {
 	int offset = scn->current_scenario * control->count;
 	control->value[offset + count] = val;
 }
 
-static inline unsigned short get_value(struct snd_scenario *scn,
+static inline unsigned short get_value(snd_scenario_t *scn,
 	struct control_settings *control, int count)
 {
 	int offset = scn->current_scenario * control->count;
@@ -223,7 +223,7 @@ static int add_control(snd_ctl_t *handle, snd_ctl_elem_id_t *id,
 	return 0;
 }
 
-static int parse_controls(struct snd_scenario *scn, FILE *f)
+static int parse_controls(snd_scenario_t *scn, FILE *f)
 {
 	struct control_settings *control;
 	char buf[MAX_BUF], name[MAX_NAME];
@@ -408,7 +408,7 @@ static int get_enum (char *buf)
 	return 0; /* TODO */
 }
 
-static void seq_list_append(struct snd_scenario *scn,
+static void seq_list_append(snd_scenario_t *scn,
 			struct sequence_element *curr, int position)
 {
 	struct sequence_element *last, *tmp;
@@ -441,7 +441,7 @@ static void seq_list_append(struct snd_scenario *scn,
 	}
 }
 
-static int parse_sequences(struct snd_scenario *scn, FILE *f, int position)
+static int parse_sequences(snd_scenario_t *scn, FILE *f, int position)
 {
 	char buf[MAX_BUF], *tbuf, *control_value;
 	int control_len, i;
@@ -517,7 +517,7 @@ static int parse_sequences(struct snd_scenario *scn, FILE *f, int position)
 }
 
 /* load scenario i */
-static int read_scenario_file(struct snd_scenario *scn)
+static int read_scenario_file(snd_scenario_t *scn)
 {
 	int fd, ret;
 	FILE *f;
@@ -546,7 +546,7 @@ close:
 	return ret;
 }
 
-static int read_sequence_file(struct snd_scenario *scn, int position)
+static int read_sequence_file(snd_scenario_t *scn, int position)
 {
 	int fd, ret;
 	FILE *f;
@@ -580,7 +580,7 @@ close:
 	return ret;
 }
 
-static int parse_scenario(struct snd_scenario *scn, FILE *f, int line_)
+static int parse_scenario(snd_scenario_t *scn, FILE *f, int line_)
 {
 	struct scenario_info *info;
 	int line = line_ - 1, id = 0, file = 0;
@@ -721,7 +721,7 @@ err:
 	return -EINVAL;
 }
 
-static int read_master_file(struct snd_scenario *scn, FILE *f)
+static int read_master_file(snd_scenario_t *scn, FILE *f)
 {
 	int line = 0, ret = 0, i;
 	char buf[MAX_BUF], *tbuf;
@@ -769,7 +769,7 @@ err:
 }
 
 /* load scenario i */
-static int import_master_config(struct snd_scenario *scn)
+static int import_master_config(snd_scenario_t *scn)
 {
 	int fd, ret;
 	FILE *f;
@@ -801,7 +801,7 @@ close:
  *
  * Parse sound card and store control data in memory db.
  */
-static int parse_card_controls(struct snd_scenario *scn)
+static int parse_card_controls(snd_scenario_t *scn)
 {
 	struct control_settings *control;
 	snd_ctl_t *handle;
@@ -886,7 +886,7 @@ close:
  *
  * Read and parse scenario_info files the store in memory.
  */
-static int import_scenario_files(struct snd_scenario *scn)
+static int import_scenario_files(snd_scenario_t *scn)
 {
 	int ret;
 
@@ -933,7 +933,7 @@ static int import_scenario_files(struct snd_scenario *scn)
 }
 
 /* free all resorces */
-static void free_scn(struct snd_scenario *scn)
+static void free_scn(snd_scenario_t *scn)
 {
 	/* TODO: valgrind to make sure. */
 	int i;
@@ -977,19 +977,19 @@ static void free_scn(struct snd_scenario *scn)
 /*
  * Init sound card scenario db.
  */
-struct snd_scenario *snd_scenario_open(const char *card_name)
+snd_scenario_t *snd_scenario_open(const char *card_name)
 {
-	struct snd_scenario *scn;
+	snd_scenario_t *scn;
 	int err;
 
 	/* TODO: locking and
 	 * check if card_name scn is already loaded,
 	 * if so reuse to conserve ram. */
 
-	scn = malloc(sizeof(struct snd_scenario));
+	scn = malloc(sizeof(snd_scenario_t));
 	if (scn == NULL)
 		return NULL;
-	bzero(scn, sizeof(struct snd_scenario));
+	bzero(scn, sizeof(snd_scenario_t));
 	scn->card_name = strdup(card_name);
 	if (scn->card_name == NULL) {
 		free(scn);
@@ -1016,7 +1016,7 @@ struct snd_scenario *snd_scenario_open(const char *card_name)
 /*
  * Reload and reparse scenario db.
  */
-int snd_scenario_reload(struct snd_scenario *scn)
+int snd_scenario_reload(snd_scenario_t *scn)
 {
 	free_scn(scn);
 
@@ -1034,13 +1034,14 @@ int snd_scenario_reload(struct snd_scenario *scn)
 	return 0;
 }
 
-void snd_scenario_close(struct snd_scenario *scn)
+int snd_scenario_close(snd_scenario_t *scn)
 {
 	free_scn(scn);
+	return 0;
 }
 
 static int set_control(snd_ctl_t *handle, snd_ctl_elem_id_t *id,
-	struct snd_scenario *scn)
+	snd_scenario_t *scn)
 {
 	struct control_settings *setting;
 	int ret, count, i, idnum;
@@ -1122,7 +1123,7 @@ set_val:
 	return 0;
 }
 
-static void exec_sequence(struct sequence_element *seq, struct snd_scenario
+static void exec_sequence(struct sequence_element *seq, snd_scenario_t
 			*scn, snd_ctl_elem_list_t *list, snd_ctl_t *handle)
 {
 	int count = snd_ctl_elem_list_get_count(list);
@@ -1151,7 +1152,7 @@ static void exec_sequence(struct sequence_element *seq, struct snd_scenario
 	}
 }
 
-int snd_scenario_set_scn(struct snd_scenario *scn, const char *name)
+int snd_scenario_set_scn(snd_scenario_t *scn, const char *name)
 {
 	snd_ctl_card_info_t *info;
 	snd_ctl_elem_list_t *list;
@@ -1241,7 +1242,7 @@ close:
 	return ret;
 }
 
-int snd_scenario_dump(const char *card_name)
+int snd_scenario_dump(snd_output_t *output, const char *card_name)
 {
 	snd_ctl_t *handle;
 	snd_ctl_card_info_t *info;
@@ -1311,7 +1312,7 @@ close:
 	return ret;
 }
 
-const char *snd_scenario_get_scn(struct snd_scenario *scn)
+const char *snd_scenario_get_scn(snd_scenario_t *scn)
 {
 	if (scn->current_scenario > 0 && scn->current_scenario < MAX_SCN)
 		return scn->scenario[scn->current_scenario].name;
@@ -1319,18 +1320,18 @@ const char *snd_scenario_get_scn(struct snd_scenario *scn)
 		return NULL;
 }
 
-int snd_scenario_set_integer(struct snd_scenario *scn, int type, int value)
+int snd_scenario_set_integer(snd_scenario_t *scn, int type, int value)
 {
 	switch (type) {
 	case SND_SCN_INT_QOS:
-		scn->scenario[scn->current_scenario].qos = qos;
+		scn->scenario[scn->current_scenario].qos = value;
 		return 0;
 	default:
 		return -EINVAL;
 	}
 }
 
-int snd_scenario_get_integer(struct snd_scenario *scn, int type, int *value)
+int snd_scenario_get_integer(snd_scenario_t *scn, int type, int *value)
 {
 	if (value == NULL)
 		return -EINVAL;
@@ -1343,14 +1344,14 @@ int snd_scenario_get_integer(struct snd_scenario *scn, int type, int *value)
 	}
 }
 
-int snd_scenario_get_control_id(struct snd_scenario *scn, int type,
+int snd_scenario_get_control_id(snd_scenario_t *scn, int type,
 				snd_ctl_elem_id_t *id)
 {
 	/* not yet implemented */
 	return -EINVAL;
 }
 
-int snd_scenario_list(struct snd_scenario *scn, const char **list[])
+int snd_scenario_list(snd_scenario_t *scn, const char **list[])
 {
 	if (scn == NULL || list == NULL)
 		return -EINVAL;
