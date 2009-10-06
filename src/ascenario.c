@@ -1319,40 +1319,41 @@ const char *snd_scenario_get_scn(struct snd_scenario *scn)
 		return NULL;
 }
 
-int snd_scenario_set_qos(struct snd_scenario *scn, int qos)
+int snd_scenario_set_integer(struct snd_scenario *scn, int type, int value)
 {
-	/* TODO: change QoS kcontrols */
-	scn->scenario[scn->current_scenario].qos = qos;
-	return 0;
+	switch (type) {
+	case SND_SCN_INT_QOS:
+		scn->scenario[scn->current_scenario].qos = qos;
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
-int snd_scenario_get_qos(struct snd_scenario *scn)
+int snd_scenario_get_integer(struct snd_scenario *scn, int type, int *value)
 {
-	return scn->scenario[scn->current_scenario].qos;
+	if (value == NULL)
+		return -EINVAL;
+	switch (type) {
+	case SND_SCN_INT_QOS:
+		*value = scn->scenario[scn->current_scenario].qos;
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
-int snd_scenario_get_master_playback_volume(struct snd_scenario *scn)
+int snd_scenario_get_control_id(struct snd_scenario *scn, int type,
+				snd_ctl_elem_id_t *id)
 {
-	return scn->scenario[scn->current_scenario].playback_volume_id;
-}
-
-int snd_scenario_get_master_playback_switch(struct snd_scenario *scn)
-{
-	return scn->scenario[scn->current_scenario].playback_switch_id;
-}
-
-int snd_scenario_get_master_capture_volume(struct snd_scenario *scn)
-{
-	return scn->scenario[scn->current_scenario].capture_volume_id;
-}
-
-int snd_scenario_get_master_capture_switch(struct snd_scenario *scn)
-{
-	return scn->scenario[scn->current_scenario].capture_switch_id;
+	/* not yet implemented */
+	return -EINVAL;
 }
 
 int snd_scenario_list(struct snd_scenario *scn, const char **list[])
 {
+	if (scn == NULL || list == NULL)
+		return -EINVAL;
 	*list = scn->list;
 	return scn->num_scenarios;
 }

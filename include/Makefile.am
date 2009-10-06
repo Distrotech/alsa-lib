@@ -3,7 +3,7 @@ SUBDIRS = sound
 sysincludedir = ${includedir}/sys
 alsaincludedir = ${includedir}/alsa
 
-alsainclude_HEADERS = asoundlib.h asoundef.h \
+alsainclude_HEADERS = asoundlib.h asoundef.h ascenario.h \
 		      version.h global.h input.h output.h error.h \
 		      conf.h control.h iatomic.h
 

@@ -1,51 +1,99 @@
+/**
+ * \file include/ascenario.h
+ * \brief Scenario interface for the ALSA driver
+ * \author Liam Girdwood <lrg@slimlogic.co.uk>
+ * \author Stefan Schmidt <stefan@slimlogic.co.uk>
+ * \author Jaroslav Kysela <perex@perex.cz>
+ * \date 2008-2009
+ */
 /*
-*  ALSA Scenario header file
-*
-*   This library is free software; you can redistribute it and/or modify
-*   it under the terms of the GNU Lesser General Public License as
-*   published by the Free Software Foundation; either version 2.1 of
-*   the License, or (at your option) any later version.
-*
-*   This program is distributed in the hope that it will be useful,
-*   but WITHOUT ANY WARRANTY; without even the implied warranty of
-*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-*   GNU Lesser General Public License for more details.
-*
-*   You should have received a copy of the GNU Lesser General Public
-*   License along with this library; if not, write to the Free Software
-*   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
-*
-*  Copyright (C) 2008-2009 SlimLogic Ltd
-*  Authors: Liam Girdwood <lrg@slimlogic.co.uk>
-*           Stefan Schmidt <stefan@slimlogic.co.uk>
+ *
+ *   This library is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU Lesser General Public License as
+ *   published by the Free Software Foundation; either version 2.1 of
+ *   the License, or (at your option) any later version.
+ *
+ *   This program is distributed in the hope that it will be useful,
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *   GNU Lesser General Public License for more details.
+ *
+ *   You should have received a copy of the GNU Lesser General Public
+ *   License along with this library; if not, write to the Free Software
+ *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
+ *
+ *  Copyright (C) 2008-2009 SlimLogic Ltd
+ */
+
+#ifndef __ALSA_ASCENARIO_H
+#define __ALSA_ASCENARIO_H
+
+/*! \page ascenario Scenario interface
+
+It allows switching audio settings between scenarios or uses-cases like
+listening to music and answering an incoming phone call. Made of control
+aliasing for playback, capture master and switch as well as the option to
+post- and prefix a sequence of control changes avoiding pops and other
+unwanted noise.
+
 */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ *  \defgroup AScenario Scenario Interface
+ *  The ALSA scenario interface.
+ *  See \ref ascenario page for more details.
+ *  \{
+ */
+     
 /**
  * Scenario IDs
  *
  * Standard Scenario IDs - Add new scenarios at the end.
  */
 
+/** use main speaker for playback */
 #define SND_SCN_PLAYBACK_SPEAKER        "playback speaker"
+/** use headphone output for playback */
 #define SND_SCN_PLAYBACK_HEADPHONES     "playback headphone"
+/** use headset for playback */
 #define SND_SCN_PLAYBACK_HEADSET        "playback headset"
+/** use bluetooth interface for playback */
 #define SND_SCN_PLAYBACK_BLUETOOTH      "playback bluetooth"
+/** use handset interface for playback */
 #define SND_SCN_PLAYBACK_HANDSET        "playback handset"
+/** use gsm interface for playback */
 #define SND_SCN_PLAYBACK_GSM            "playback gsm"
+/** use line interface for playback */
 #define SND_SCN_PLAYBACK_LINE           "playback line"
 
+/** use mic input for capture */
 #define SND_SCN_CAPTURE_MIC             "capture mic"
+/** use line input for capture */
 #define SND_SCN_CAPTURE_LINE            "capture line"
+/** use headset input for capture */
 #define SND_SCN_CAPTURE_HEADSET         "capture headset"
+/** use handset input for capture */
 #define SND_SCN_CAPTURE_HANDSET         "capture handset"
+/** use bluetooth input for capture */
 #define SND_SCN_CAPTURE_BLUETOOTH       "capture bluetooth"
+/** use gsm input for capture */
 #define SND_SCN_CAPTURE_GSM             "capture gsm"
 
+/** phone call through gsm handset */
 #define SND_SCN_PHONECALL_GSM_HANDSET   "phonecall gsm handset"
+/** phone call through bluetooth handset */
 #define SND_SCN_PHONECALL_BT_HANDSET    "phonecall bt handset"
+/** phone call through ip handset */
 #define SND_SCN_PHONECALL_IP_HANDSET    "phonecall ip handset"
+/** phone call through gsm headset */
 #define SND_SCN_PHONECALL_GSM_HEADSET   "phonecall gsm headset"
+/** phone call through bluetooth headset */
 #define SND_SCN_PHONECALL_BT_HEADSET    "phonecall bt headset"
+/** phone call through ip headset */
 #define SND_SCN_PHONECALL_IP_HEADSET    "phonecall ip headset"
 
 /**
@@ -54,117 +102,126 @@
  * Defines Audio Quality of Service. Systems supporting different types of QoS
  * often have lower power consumption on lower quality levels.
  */
+/** use HIFI grade QoS service */
 #define SND_POWER_QOS_HIFI			0
+/** use voice grade QoS service */
 #define SND_POWER_QOS_VOICE			1
+/** use system sound grade QoS service */
 #define SND_POWER_QOS_SYSTEM			2
 
-struct snd_scenario;
+/**
+ * KControl types
+ */
+/** master playback volume */
+#define SND_SCN_KCTL_MASTER_PLAYBACK_VOLUME	1
+/** master playback switch */
+#define SND_SCN_KCTL_MASTER_PLAYBACK_SWITCH	2
+/** master capture volume */
+#define SND_SCN_KCTL_MASTER_CAPTURE_VOLUME	3
+/** master capture switch */
+#define SND_SCN_KCTL_MASTER_CAPTURE_SWITCH	4
+
+/**
+ * Integer types
+ */
+/** QoS volume */
+#define SND_SCN_INT_QOS				1
+
+/** Scenario container */
+typedef snd_scenario_t snd_scenario_t;
 
 /* TODO: add notification */
 
 /**
- * snd_scenario_list - list supported scenarios
- * @scn: scenario
- * @list: list of supported scenario names.
- *
- * List supported scenarios for this sound card.
- * Returns number of scenarios.
+ * \brief list supported scenarios for given soundcard
+ * \param scn scenario
+ * \param list returned list of supported scenario names
+ * \return number of scenarios if success, otherwise a negative error code
  */
-int snd_scenario_list(struct snd_scenario *scn, const char **list[]);
+int snd_scenario_list(snd_scenario_t *scn, const char **list[]);
 
 /**
- * snd_scenario_set_scn - set scenario
- * @scn: scenario
- * @scenario: scenario name
- *
- * Set new scenario for sound card.
+ * \brief set new scenario for sound card
+ * \param scn scenario
+ * \param scenario scenario id string
+ * \return zero if success, otherwise a negative error code
  */
-int snd_scenario_set_scn(struct snd_scenario *scn, const char *scenario);
+int snd_scenario_set_scn(snd_scenario_t *scn, const char *scenario);
 
 /**
- * snd_scenario_get_scn - get scenario
- * @scn: scenario
+ * \brief get scenario
+ * \param scn scenario
+ * \return scenario id string
  *
  * Get current sound card scenario.
  */
-const char *snd_scenario_get_scn(struct snd_scenario *scn);
+const char *snd_scenario_get_scn(snd_scenario_t *scn);
 
 /**
- * snd_scenario_get_master_playback_volume - get playback volume
- * @scn: scenario
+ * \brief get associated control id
+ * \param scn scenario
+ * \param kctl_type see SND_SCN_KCTL_* constants
+ * \param id returned control id
+ * \return zero if success, otherwise a negative error code
  *
- * Get the master playback volume control name for the current scenario.
+ * Get the control id for the current scenario.
  */
-int snd_scenario_get_master_playback_volume(struct snd_scenario *scn);
+int snd_scenario_get_kcontrol(snd_scenario_t *scn,
+                              int kctl_type, snd_ctl_elem_id_t *id);
 
 /**
- * snd_scenario_get_master_playback_switch - get playback switch
- * @scn: scenario
- *
- * Get the master playback switch control name for the current scenario.
+ * \brief set integer value
+ * \param scn scenario
+ * \param int_key see SND_SCN_INT_* constants
+ * \param value value
+ * \return zero if success, otherwise a negative error code
  */
- int snd_scenario_get_master_playback_switch(struct snd_scenario *scn);
+int snd_scenario_set_integer(snd_scenario_t *scn, int int_key, int value);
 
 /**
- * snd_scenario_get_master_capture_volume - get capture volume
- * @scn: scenario
- *
- * Get the master capture volume control name for the current scenario.
+ * \brief get integer value
+ * \param scn scenario
+ * \param int_key see SND_SCN_INT_* constants
+ * \param value value
+ * \return zero if success, otherwise a negative error code
  */
-int snd_scenario_get_master_capture_volume(struct snd_scenario *scn);
+int snd_scenario_get_integer(snd_scenario_t *scn, int int_key, int *value);
 
 /**
- * snd_scenario_get_master_capture_switch - get capture switch
- * @scn: scenario
- *
- * Get the master capture switch control name for the current scenario.
+ * \brief open scenario core for sound card
+ * \param card_name sound card name.
+ * \return zero if success, otherwise a negative error code
  */
-int snd_scenario_get_master_capture_switch(struct snd_scenario *scn);
+snd_scenario_t *snd_scenario_open(const char *card_name);
 
 /**
- * snd_scenario_set_qos - set qos
- * @qos: qos
- *
- * Set Quality of Service for this scenario.
+ * \brief reload and reparse scenario configuration
+ * \param scn scenario
+ * \return zero if success, otherwise a negative error code
  */
-int snd_scenario_set_qos(struct snd_scenario *scn, int qos);
+int snd_scenario_reload(snd_scenario_t *scn);
 
 /**
- * snd_scenario_get_qos - get qos
- * @scn: scenario
- *
- * Get Quality of Service for this scenario.
+ * \brief close scenario
+ * \param scn scenario
+ * \return zero if success, otherwise a negative error code
  */
-int snd_scenario_get_qos(struct snd_scenario *scn);
+int snd_scenario_close(snd_scenario_t *scn);
 
 /**
- * snd_scenario_open - open scenario core
- * @card_name: sound card name.
- *
- * Open scenario manager core for sound card.
+ * \brief dump scenario
+ * \param output handle
+ * \param card_name sound card name
+ * \return zero if success, otherwise a negative error code
  */
-struct snd_scenario *snd_scenario_open(const char *card_name);
+int snd_scenario_dump(snd_output_t *output, const char *card_name);
 
 /**
- * snd_scenario_reload - reload and reparse scenario configuration
- * @scn: scenario
- *
- * Reloads and reparses sound card scenario configuration.
+ *  \}
  */
-int snd_scenario_reload(struct snd_scenario *scn);
 
-/**
- * snd_scenario_close - close scenario core
- * @scn: scenario
- *
- * Free scenario manager core for sound card.
- */
-void snd_scenario_close(struct snd_scenario *scn);
+#ifdef __cplusplus
+}
+#endif
 
-/**
- * snd_scenario_dump - dump
- * @card_name: sound card name.
- *
- * Dump current sound card settings to stdout in scn format.
- */
-int snd_scenario_dump(const char *card_name);
+#endif /* __ALSA_ASCENARIO_H */  
